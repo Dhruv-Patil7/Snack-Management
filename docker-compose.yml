@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: snack-postgres
+    environment:
+      POSTGRES_DB: snackdb
+      POSTGRES_USER: snackadmin
+      POSTGRES_PASSWORD: snackpass123
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - snack-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U snackadmin -d snackdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: snack-backend
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: snackdb
+      DB_USER: snackadmin
+      DB_PASSWORD: snackpass123
+      JWT_SECRET: your-production-secret-key-must-be-at-least-256-bits-long-change-this
+      PHOTO_DIR: /app/uploads/photos
+      CORS_ORIGINS: http://localhost,http://localhost:3000,http://localhost:5173
+    ports:
+      - "8080:8080"
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - snack-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: snack-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - snack-net
+
+volumes:
+  pgdata:
+  uploads:
+
+networks:
+  snack-net:
+    driver: bridge

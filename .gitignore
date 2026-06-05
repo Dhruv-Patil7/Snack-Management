@@ -1,0 +1,25 @@
+# Git Ignore for Snack Distribution Management System
+
+# System files
+.DS_Store
+.idea/
+.vscode/
+
+# Local Maven
+.maven/
+
+# Backend Build & Target
+backend/target/
+backend/*.log
+backend/uploads/
+uploads/
+
+# Frontend Build & Dependencies
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+frontend/*.log
+
+# Database volumes
+postgres-data/

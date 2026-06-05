@@ -1,0 +1,581 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Html5Qrcode } from 'html5-qrcode';
+import { useAuth } from '../../auth/AuthContext';
+import { useToast } from '../../components/Toast';
+import { redemptionApi, employeeApi } from '../../api';
+import { Button } from '../../components/Button';
+import { Card } from '../../components/Card';
+import { Input } from '../../components/Input';
+import { Badge } from '../../components/Badge';
+import type { ScanResult, Employee } from '../../types';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+
+type View = 'session-select' | 'scanner' | 'verification' | 'success' | 'error' | 'forgot-id';
+
+export function DistributorPortal() {
+  const { logout } = useAuth();
+  const { showToast } = useToast();
+
+  const [view, setView] = useState<View>('session-select');
+  const [session, setSession] = useState<string>('');
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  // Forgot-ID state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Employee[]>([]);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [pin, setPin] = useState('');
+  const [manualLoading, setManualLoading] = useState(false);
+
+  // QR Scanner
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const scannerContainerRef = useRef<HTMLDivElement>(null);
+
+  const stopScanner = useCallback(async () => {
+    if (scannerRef.current) {
+      try {
+        await scannerRef.current.stop();
+        scannerRef.current.clear();
+      } catch { /* ignore */ }
+      scannerRef.current = null;
+    }
+  }, []);
+
+  const startScanner = useCallback(async () => {
+    await stopScanner();
+
+    const scanner = new Html5Qrcode('qr-reader');
+    scannerRef.current = scanner;
+
+    try {
+      await scanner.start(
+        { facingMode: 'environment' },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0,
+        },
+        async (decodedText) => {
+          // Stop scanner immediately after a successful scan
+          await stopScanner();
+          handleQrScan(decodedText);
+        },
+        () => { /* ignore errors during scanning */ }
+      );
+    } catch (err) {
+      showToast('Camera access denied. Please allow camera access.', 'error');
+    }
+  }, [session, stopScanner, showToast]);
+
+  useEffect(() => {
+    return () => { stopScanner(); };
+  }, [stopScanner]);
+
+  const handleQrScan = async (qrToken: string) => {
+    try {
+      const res = await redemptionApi.scan(qrToken, session);
+      setScanResult(res.data);
+      setView('verification');
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Invalid or expired QR code';
+      setErrorMessage(msg);
+      setView('error');
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (!scanResult) return;
+    setConfirmLoading(true);
+
+    try {
+      await redemptionApi.confirm(scanResult.employeeId, session);
+      setView('success');
+      showToast('Snack redeemed successfully!', 'success');
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Redemption failed';
+      setErrorMessage(msg);
+      setView('error');
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    try {
+      const res = await employeeApi.search(searchQuery);
+      setSearchResults(res.data);
+    } catch {
+      showToast('Search failed', 'error');
+    }
+  };
+
+  const handleManualRedeem = async () => {
+    if (!selectedEmployee || !pin) return;
+    setManualLoading(true);
+
+    try {
+      await redemptionApi.manual(selectedEmployee.employeeCode, pin, session);
+      setView('success');
+      showToast('Snack redeemed successfully!', 'success');
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Redemption failed';
+      setErrorMessage(msg);
+      setView('error');
+    } finally {
+      setManualLoading(false);
+    }
+  };
+
+  const resetToScanner = async () => {
+    setScanResult(null);
+    setErrorMessage('');
+    setSelectedEmployee(null);
+    setPin('');
+    setSearchQuery('');
+    setSearchResults([]);
+    setView('scanner');
+    // Delay scanner start to allow DOM to render
+    setTimeout(() => startScanner(), 300);
+  };
+
+  const selectSession = (s: string) => {
+    setSession(s);
+    setView('scanner');
+    setTimeout(() => startScanner(), 300);
+  };
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      background: 'radial-gradient(ellipse at 50% 0%, rgba(255, 206, 0, 0.04), transparent 50%), var(--color-bg)',
+    }}>
+      {/* Header */}
+      <header style={{
+        padding: '12px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        background: 'rgba(21, 21, 19, 0.8)',
+        backdropFilter: 'blur(12px)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <img src="/logo.png" alt="UltraTech" style={{ height: '36px', borderRadius: '4px' }} />
+          <div style={{ borderLeft: '1px solid rgba(255,255,255,0.15)', paddingLeft: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '15px', fontWeight: 800, color: '#f5f5f4', letterSpacing: '-0.01em' }}>Distributor Portal</h1>
+            {session && (
+              <Badge variant={session === 'MORNING' ? 'warning' : 'info'}>
+                {session === 'MORNING' ? '☀️ Morning' : '🌙 Evening'}
+              </Badge>
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {session && view !== 'session-select' && (
+            <button
+              onClick={() => { stopScanner(); setSession(''); setView('session-select'); }}
+              style={{
+                background: 'rgba(255, 206, 0, 0.1)',
+                border: '1px solid rgba(255, 206, 0, 0.25)',
+                borderRadius: '8px',
+                color: '#ffce00',
+                padding: '6px 12px',
+                fontSize: '12px',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              Switch Session
+            </button>
+          )}
+          <button
+            onClick={() => { stopScanner(); logout(); }}
+            style={{
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.2)',
+              borderRadius: '8px',
+              color: '#fca5a5',
+              padding: '6px 12px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            Logout
+          </button>
+        </div>
+      </header>
+
+      <div style={{ padding: '20px', maxWidth: '500px', margin: '0 auto' }}>
+
+        {/* Session Selection */}
+        {view === 'session-select' && (
+          <div className="animate-fade-in">
+            <h2 style={{ fontSize: '20px', fontWeight: 700, textAlign: 'center', marginBottom: '8px', color: '#f1f5f9' }}>
+              Select Session
+            </h2>
+            <p style={{ textAlign: 'center', color: '#64748b', fontSize: '14px', marginBottom: '24px' }}>
+              Choose the current snack distribution session
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <Card
+                onClick={() => selectSession('MORNING')}
+                style={{
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  padding: '32px',
+                  border: '1px solid rgba(245, 158, 11, 0.2)',
+                }}
+              >
+                <span style={{ fontSize: '48px', display: 'block', marginBottom: '12px' }}>☀️</span>
+                <span style={{ fontSize: '22px', fontWeight: 700, color: '#fcd34d' }}>Morning Session</span>
+              </Card>
+              <Card
+                onClick={() => selectSession('EVENING')}
+                style={{
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  padding: '32px',
+                  border: '1px solid rgba(59, 130, 246, 0.2)',
+                }}
+              >
+                <span style={{ fontSize: '48px', display: 'block', marginBottom: '12px' }}>🌙</span>
+                <span style={{ fontSize: '22px', fontWeight: 700, color: '#93c5fd' }}>Evening Session</span>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {/* QR Scanner */}
+        {view === 'scanner' && (
+          <div className="animate-fade-in">
+            <h2 style={{ fontSize: '18px', fontWeight: 700, textAlign: 'center', marginBottom: '16px', color: '#f1f5f9' }}>
+              Scan Employee QR
+            </h2>
+
+            <Card style={{ padding: '0', overflow: 'hidden' }}>
+              <div
+                id="qr-reader"
+                ref={scannerContainerRef}
+                style={{
+                  width: '100%',
+                  borderRadius: '16px 16px 0 0',
+                  overflow: 'hidden',
+                }}
+              />
+              <div style={{ padding: '16px', textAlign: 'center' }}>
+                <p style={{ color: '#94a3b8', fontSize: '13px' }}>
+                  Point camera at employee's QR code
+                </p>
+              </div>
+            </Card>
+
+            <Button
+              variant="ghost"
+              fullWidth
+              style={{ marginTop: '16px' }}
+              onClick={() => { stopScanner(); setView('forgot-id'); }}
+            >
+              🔑 Employee Forgot ID?
+            </Button>
+          </div>
+        )}
+
+        {/* Verification */}
+        {view === 'verification' && scanResult && (
+          <div className="animate-slide-up" style={{ textAlign: 'center' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px', color: '#f1f5f9' }}>
+              Verify Identity
+            </h2>
+
+            <Card glow>
+              {/* Photo */}
+              {scanResult.photoUrl && (
+                <div style={{
+                  width: '120px',
+                  height: '120px',
+                  borderRadius: '50%',
+                  overflow: 'hidden',
+                  margin: '0 auto 16px',
+                  border: '3px solid rgba(255, 206, 0, 0.4)',
+                  boxShadow: '0 0 20px rgba(255, 206, 0, 0.2)',
+                }}>
+                  <img
+                    src={`${API_BASE}${scanResult.photoUrl}`}
+                    alt={scanResult.employeeName}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                </div>
+              )}
+
+              {!scanResult.photoUrl && (
+                <div style={{
+                  width: '120px',
+                  height: '120px',
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #1e293b, #334155)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 16px',
+                  fontSize: '48px',
+                  border: '3px solid rgba(255,255,255,0.1)',
+                }}>
+                  👤
+                </div>
+              )}
+
+              <h3 style={{ fontSize: '22px', fontWeight: 700, color: '#f1f5f9', marginBottom: '4px' }}>
+                {scanResult.employeeName}
+              </h3>
+              <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '4px' }}>
+                {scanResult.employeeCode}
+              </p>
+              {scanResult.department && (
+                <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '16px' }}>
+                  {scanResult.department}
+                </p>
+              )}
+
+              <Badge variant={session === 'MORNING' ? 'warning' : 'info'}>
+                {session === 'MORNING' ? '☀️ Morning Session' : '🌙 Evening Session'}
+              </Badge>
+
+              {scanResult.alreadyRedeemed ? (
+                <div style={{
+                  marginTop: '20px',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                }}>
+                  <p style={{ color: '#fca5a5', fontWeight: 600, fontSize: '15px' }}>
+                    ⚠️ Already Redeemed
+                  </p>
+                  <p style={{ color: '#f87171', fontSize: '13px', marginTop: '4px' }}>
+                    {session} snack already redeemed at {scanResult.alreadyRedeemedAt}
+                  </p>
+                </div>
+              ) : (
+                <Button
+                  variant="success"
+                  size="lg"
+                  fullWidth
+                  loading={confirmLoading}
+                  onClick={handleConfirm}
+                  style={{ marginTop: '24px' }}
+                >
+                  ✓ Confirm Redemption
+                </Button>
+              )}
+            </Card>
+
+            <Button
+              variant="ghost"
+              fullWidth
+              onClick={resetToScanner}
+              style={{ marginTop: '12px' }}
+            >
+              ← Back to Scanner
+            </Button>
+          </div>
+        )}
+
+        {/* Success */}
+        {view === 'success' && (
+          <div className="animate-success" style={{ textAlign: 'center', paddingTop: '40px' }}>
+            <div style={{
+              width: '100px',
+              height: '100px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(34, 197, 94, 0.1))',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 20px',
+              border: '3px solid rgba(34, 197, 94, 0.4)',
+              fontSize: '48px',
+            }}>
+              ✓
+            </div>
+            <h2 style={{ fontSize: '24px', fontWeight: 700, color: '#86efac', marginBottom: '8px' }}>
+              Snack Redeemed!
+            </h2>
+            <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '32px' }}>
+              Redemption recorded successfully
+            </p>
+            <Button size="lg" fullWidth onClick={resetToScanner}>
+              Scan Next Employee
+            </Button>
+          </div>
+        )}
+
+        {/* Error */}
+        {view === 'error' && (
+          <div className="animate-fade-in" style={{ textAlign: 'center', paddingTop: '40px' }}>
+            <div style={{
+              width: '100px',
+              height: '100px',
+              borderRadius: '50%',
+              background: 'rgba(239, 68, 68, 0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 20px',
+              border: '3px solid rgba(239, 68, 68, 0.3)',
+              fontSize: '48px',
+            }}>
+              ✗
+            </div>
+            <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#fca5a5', marginBottom: '8px' }}>
+              Redemption Failed
+            </h2>
+            <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '32px' }}>
+              {errorMessage}
+            </p>
+            <Button size="lg" fullWidth onClick={resetToScanner}>
+              Try Again
+            </Button>
+          </div>
+        )}
+
+        {/* Forgot ID Flow */}
+        {view === 'forgot-id' && (
+          <div className="animate-fade-in">
+            <h2 style={{ fontSize: '18px', fontWeight: 700, textAlign: 'center', marginBottom: '20px', color: '#f1f5f9' }}>
+              🔑 Manual Verification
+            </h2>
+
+            {!selectedEmployee ? (
+              <Card>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                  <Input
+                    placeholder="Search by name or employee code"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                    style={{ flex: 1, marginBottom: 0 }}
+                  />
+                  <Button onClick={handleSearch} size="md">
+                    Search
+                  </Button>
+                </div>
+
+                {searchResults.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflow: 'auto' }}>
+                    {searchResults.map((emp) => (
+                      <div
+                        key={emp.id}
+                        onClick={() => setSelectedEmployee(emp)}
+                        style={{
+                          padding: '12px',
+                          background: 'rgba(15, 23, 42, 0.6)',
+                          borderRadius: '10px',
+                          cursor: 'pointer',
+                          border: '1px solid rgba(255,255,255,0.06)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                          transition: 'all 200ms',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(255, 206, 0, 0.4)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; }}
+                      >
+                        {emp.photoUrl ? (
+                          <img
+                            src={`${API_BASE}${emp.photoUrl}`}
+                            alt={emp.name}
+                            style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          <div style={{
+                            width: '40px', height: '40px', borderRadius: '50%',
+                            background: '#334155', display: 'flex', alignItems: 'center',
+                            justifyContent: 'center', fontSize: '18px',
+                          }}>👤</div>
+                        )}
+                        <div>
+                          <p style={{ fontWeight: 600, color: '#f1f5f9', fontSize: '14px' }}>{emp.name}</p>
+                          <p style={{ color: '#64748b', fontSize: '12px' }}>{emp.employeeCode} • {emp.department}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            ) : (
+              <Card glow style={{ textAlign: 'center' }}>
+                {selectedEmployee.photoUrl ? (
+                  <img
+                    src={`${API_BASE}${selectedEmployee.photoUrl}`}
+                    alt={selectedEmployee.name}
+                    style={{
+                      width: '100px', height: '100px', borderRadius: '50%',
+                      objectFit: 'cover', margin: '0 auto 12px', display: 'block',
+                      border: '3px solid rgba(255, 206, 0, 0.4)',
+                    }}
+                  />
+                ) : (
+                  <div style={{
+                    width: '100px', height: '100px', borderRadius: '50%',
+                    background: '#334155', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', fontSize: '40px', margin: '0 auto 12px',
+                  }}>👤</div>
+                )}
+                <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#f1f5f9' }}>{selectedEmployee.name}</h3>
+                <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '20px' }}>{selectedEmployee.employeeCode}</p>
+
+                <Input
+                  label="Enter 4-digit PIN"
+                  type="password"
+                  maxLength={4}
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                  placeholder="• • • •"
+                  style={{ textAlign: 'center', fontSize: '24px', letterSpacing: '12px' }}
+                />
+
+                <Button
+                  variant="success"
+                  size="lg"
+                  fullWidth
+                  loading={manualLoading}
+                  disabled={pin.length !== 4}
+                  onClick={handleManualRedeem}
+                >
+                  ✓ Confirm Redemption
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  fullWidth
+                  onClick={() => { setSelectedEmployee(null); setPin(''); }}
+                  style={{ marginTop: '8px' }}
+                >
+                  ← Select Different Employee
+                </Button>
+              </Card>
+            )}
+
+            <Button
+              variant="ghost"
+              fullWidth
+              onClick={resetToScanner}
+              style={{ marginTop: '12px' }}
+            >
+              ← Back to Scanner
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
