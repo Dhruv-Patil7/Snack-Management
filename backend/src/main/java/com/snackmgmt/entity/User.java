@@ -29,8 +29,14 @@ public class User {
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 
+    @Column(name = "password_raw", length = 255)
+    private String passwordRaw;
+
     @Column(name = "pin_hash", length = 255)
     private String pinHash;
+
+    @Column(name = "pin_raw", length = 255)
+    private String pinRaw;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

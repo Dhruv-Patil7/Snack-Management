@@ -60,6 +60,7 @@ public class AuthService {
         }
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        user.setPasswordRaw(request.getNewPassword());
         userRepository.save(user);
     }
 }

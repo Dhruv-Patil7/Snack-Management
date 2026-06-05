@@ -15,4 +15,6 @@ public class UserResponse {
     private String employeeName;
     private Boolean active;
     private String createdAt;
+    private String passwordRaw;
+    private String pinRaw;
 }

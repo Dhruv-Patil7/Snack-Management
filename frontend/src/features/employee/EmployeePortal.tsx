@@ -6,6 +6,8 @@ import { qrApi, redemptionApi } from '../../api';
 import { Card } from '../../components/Card';
 import { Spinner } from '../../components/Spinner';
 import { Badge } from '../../components/Badge';
+import { Modal } from '../../components/Modal';
+import { Button } from '../../components/Button';
 import type { Redemption } from '../../types';
 
 export function EmployeePortal() {
@@ -19,6 +21,10 @@ export function EmployeePortal() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const [lastRedemptionId, setLastRedemptionId] = useState<number | null>(null);
+  const [newRedemption, setNewRedemption] = useState<Redemption | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchQr = useCallback(async () => {
     try {
@@ -49,6 +55,58 @@ export function EmployeePortal() {
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
   }, []);
+  useEffect(() => {
+    const initHistory = async () => {
+      try {
+        const res = await redemptionApi.myHistory();
+        if (res.data.length > 0) {
+          const maxId = Math.max(...res.data.map((r) => r.id));
+          setLastRedemptionId(maxId);
+        } else {
+          setLastRedemptionId(0);
+        }
+      } catch {
+        setLastRedemptionId(0);
+      }
+    };
+    initHistory();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'qr' && lastRedemptionId !== null) {
+      const pollHistory = async () => {
+        try {
+          const res = await redemptionApi.myHistory();
+          if (res.data.length > 0) {
+            const sortedByLatest = [...res.data].sort((a, b) => b.id - a.id);
+            const latest = sortedByLatest[0];
+            if (latest.id > lastRedemptionId) {
+              if ('vibrate' in navigator) {
+                navigator.vibrate([200, 100, 200]);
+              }
+              setNewRedemption(latest);
+              setLastRedemptionId(latest.id);
+            }
+          }
+        } catch {
+          // Silently ignore polling errors
+        }
+      };
+      pollingRef.current = setInterval(pollHistory, 3000);
+    } else {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    }
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [activeTab, lastRedemptionId]);
 
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -237,6 +295,75 @@ export function EmployeePortal() {
           </div>
         )}
       </div>
+
+      {/* Modal for Instant Redemption Feedback */}
+      <Modal
+        isOpen={newRedemption !== null}
+        onClose={() => setNewRedemption(null)}
+        title="🎉 Snack Redeemed!"
+        maxWidth="400px"
+      >
+        {newRedemption && (
+          <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center' }}>
+            <div style={{
+              width: '72px',
+              height: '72px',
+              borderRadius: '50%',
+              background: 'rgba(34, 197, 94, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#22c55e',
+              fontSize: '40px',
+              boxShadow: '0 0 20px rgba(34, 197, 94, 0.2)',
+              marginBottom: '8px'
+            }}>
+              ✓
+            </div>
+            <div>
+              <h3 style={{ color: '#f1f5f9', fontSize: '18px', fontWeight: 700, marginBottom: '6px' }}>
+                Snack Claimed Successfully!
+              </h3>
+              <p style={{ color: '#94a3b8', fontSize: '14px', lineHeight: '1.5' }}>
+                Your snack for the <strong style={{ color: '#ffce00' }}>{newRedemption.session === 'MORNING' ? 'Morning ☀️' : 'Evening 🌙'}</strong> session has been scanned and recorded.
+              </p>
+            </div>
+            
+            <div style={{
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(255,255,255,0.05)',
+              borderRadius: '12px',
+              padding: '12px 16px',
+              width: '100%',
+              textAlign: 'left',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                <span style={{ color: '#64748b' }}>Time:</span>
+                <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{newRedemption.redeemedAt}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                <span style={{ color: '#64748b' }}>Distributor:</span>
+                <span style={{ color: '#e2e8f0' }}>{newRedemption.distributorName}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                <span style={{ color: '#64748b' }}>Mode:</span>
+                <span style={{ color: '#e2e8f0' }}>{newRedemption.redemptionMode === 'DYNAMIC_QR' ? 'QR Code' : 'Manual Entry'}</span>
+              </div>
+            </div>
+
+            <Button
+              fullWidth
+              onClick={() => setNewRedemption(null)}
+              style={{ marginTop: '8px' }}
+            >
+              Great, thanks!
+            </Button>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

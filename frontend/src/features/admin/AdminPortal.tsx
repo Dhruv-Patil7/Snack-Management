@@ -449,6 +449,10 @@ export function AdminPortal() {
                                     {linkedUser.active ? 'Active Login' : 'Suspended'}
                                   </Badge>
                                 </div>
+                                <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                                  Key: <code style={{ color: '#ffce00', fontFamily: 'monospace' }}>{linkedUser.passwordRaw || 'N/A'}</code>
+                                  {linkedUser.pinRaw && <> | PIN: <code style={{ color: '#38bdf8', fontFamily: 'monospace' }}>{linkedUser.pinRaw}</code></>}
+                                </div>
                                 <div style={{ display: 'flex', gap: '4px' }}>
                                   <Button variant="ghost" size="sm" style={{ padding: '2px 6px', fontSize: '11px' }} onClick={() => { setShowResetPw(linkedUser.id); setResetPwValue(''); }}>PW</Button>
                                   <Button variant="ghost" size="sm" style={{ padding: '2px 6px', fontSize: '11px' }} onClick={() => { setShowResetPin(linkedUser.id); setResetPinValue(''); }}>PIN</Button>
@@ -526,7 +530,12 @@ export function AdminPortal() {
                     <tbody>
                       {users.filter((u) => u.employeeId === null).map((u) => (
                         <tr key={u.id} style={{ background: 'rgba(21, 21, 19, 0.25)' }}>
-                          <td style={{ padding: '12px', color: '#f1f5f9', fontSize: '14px', fontWeight: 500 }}>{u.username}</td>
+                          <td style={{ padding: '12px', color: '#f1f5f9', fontSize: '14px', fontWeight: 500 }}>
+                            <div>{u.username}</div>
+                            <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px', fontWeight: 'normal' }}>
+                              Key: <code style={{ color: '#ffce00', fontFamily: 'monospace' }}>{u.passwordRaw || 'N/A'}</code>
+                            </div>
+                          </td>
                           <td style={{ padding: '12px' }}>
                             <Badge variant={u.role === 'ADMIN' ? 'danger' : 'warning'}>{u.role}</Badge>
                           </td>

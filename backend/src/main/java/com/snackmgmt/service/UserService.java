@@ -50,12 +50,14 @@ public class UserService {
         User user = User.builder()
                 .username(request.getUsername())
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
+                .passwordRaw(request.getPassword())
                 .role(role)
                 .employee(employee)
                 .build();
 
         if (request.getPin() != null && !request.getPin().isBlank()) {
             user.setPinHash(passwordEncoder.encode(request.getPin()));
+            user.setPinRaw(request.getPin());
         }
 
         user = userRepository.save(user);
@@ -78,6 +80,7 @@ public class UserService {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
         user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setPasswordRaw(newPassword);
         userRepository.save(user);
     }
 
@@ -85,6 +88,7 @@ public class UserService {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
         user.setPinHash(passwordEncoder.encode(newPin));
+        user.setPinRaw(newPin);
         userRepository.save(user);
     }
 
@@ -104,6 +108,8 @@ public class UserService {
                 .employeeName(u.getEmployee() != null ? u.getEmployee().getName() : null)
                 .active(u.getActive())
                 .createdAt(u.getCreatedAt().format(FORMATTER))
+                .passwordRaw(u.getPasswordRaw())
+                .pinRaw(u.getPinRaw())
                 .build();
     }
 }

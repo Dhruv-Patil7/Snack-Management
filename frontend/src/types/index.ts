@@ -33,6 +33,8 @@ export interface UserAccount {
   employeeName: string | null;
   active: boolean;
   createdAt: string;
+  passwordRaw?: string | null;
+  pinRaw?: string | null;
 }
 
 export interface QrTokenResponse {
