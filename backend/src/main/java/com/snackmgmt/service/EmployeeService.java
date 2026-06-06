@@ -9,6 +9,7 @@ import com.snackmgmt.exception.ResourceNotFoundException;
 import com.snackmgmt.entity.User;
 import com.snackmgmt.repository.EmployeeRepository;
 import com.snackmgmt.repository.UserRepository;
+import com.snackmgmt.repository.RedemptionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
@@ -32,6 +33,7 @@ public class EmployeeService {
 
     private final EmployeeRepository employeeRepository;
     private final UserRepository userRepository;
+    private final RedemptionRepository redemptionRepository;
 
     @Value("${app.upload.photo-dir}")
     private String photoDir;
@@ -66,6 +68,15 @@ public class EmployeeService {
         if (request.getName() != null) employee.setName(request.getName());
         if (request.getDepartment() != null) employee.setDepartment(request.getDepartment());
         if (request.getActive() != null) {
+            if (request.getActive() == false) {
+                // Check if admin is trying to deactivate their own linked employee profile
+                String currentUserId = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+                userRepository.findByEmployeeId(id).ifPresent(user -> {
+                    if (user.getId().toString().equals(currentUserId)) {
+                        throw new IllegalArgumentException("You cannot deactivate the employee profile linked to your own logged-in account");
+                    }
+                });
+            }
             employee.setActive(request.getActive());
             // Sync with associated user login account
             userRepository.findByEmployeeId(id).ifPresent(user -> {
@@ -104,16 +115,22 @@ public class EmployeeService {
                 .collect(Collectors.toList());
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public void deleteEmployee(Long id) {
         Employee employee = employeeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee", "id", id));
-        employee.setActive(false);
-        employeeRepository.save(employee);
-        // Sync with associated user login account
+
+        // 1. Delete associated user login account (and their distributor redemptions, if any)
         userRepository.findByEmployeeId(id).ifPresent(user -> {
-            user.setActive(false);
-            userRepository.save(user);
+            redemptionRepository.deleteByDistributorId(user.getId());
+            userRepository.delete(user);
         });
+
+        // 2. Delete redemptions where this employee is the consumer
+        redemptionRepository.deleteByEmployeeId(id);
+
+        // 3. Delete employee profile
+        employeeRepository.delete(employee);
     }
 
     public EmployeeResponse uploadPhoto(Long id, MultipartFile file) throws IOException {

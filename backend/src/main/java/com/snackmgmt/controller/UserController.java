@@ -54,4 +54,10 @@ public class UserController {
         userService.toggleActive(id);
         return ResponseEntity.ok(Map.of("message", "User status toggled"));
     }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Map<String, String>> deleteUser(@PathVariable Long id) {
+        userService.deleteUser(id);
+        return ResponseEntity.ok(Map.of("message", "User deleted successfully"));
+    }
 }

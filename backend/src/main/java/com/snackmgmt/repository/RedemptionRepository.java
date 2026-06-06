@@ -71,4 +71,12 @@ public interface RedemptionRepository extends JpaRepository<Redemption, Long> {
     @Query("SELECT r FROM Redemption r WHERE CAST(r.redeemedAt AS LocalDate) = :date " +
            "ORDER BY r.redeemedAt DESC")
     List<Redemption> findByDate(@Param("date") LocalDate date);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    void deleteByEmployeeId(Long employeeId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    void deleteByDistributorId(Long distributorId);
 }

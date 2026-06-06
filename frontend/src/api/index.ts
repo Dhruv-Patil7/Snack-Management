@@ -129,6 +129,9 @@ export const userApi = {
 
   toggleActive: (id: number) =>
     api.post(`/api/users/${id}/toggle-active`),
+
+  delete: (id: number) =>
+    api.delete(`/api/users/${id}`),
 };
 
 // ==================== Dashboard ====================

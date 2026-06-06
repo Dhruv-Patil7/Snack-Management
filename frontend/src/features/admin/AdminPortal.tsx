@@ -12,7 +12,7 @@ import type { Employee, UserAccount, Redemption, DashboardData } from '../../typ
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
-type Tab = 'dashboard' | 'directory' | 'history';
+type Tab = 'dashboard' | 'directory' | 'system-accounts' | 'history';
 
 function Spoiler({ value, color }: { value: string; color: string }) {
   const [revealed, setRevealed] = useState(false);
@@ -90,6 +90,7 @@ export function AdminPortal() {
   const [resetPwValue, setResetPwValue] = useState('');
   const [showResetPin, setShowResetPin] = useState<number | null>(null);
   const [resetPinValue, setResetPinValue] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ id: number; name: string; type: 'employee' | 'user' } | null>(null);
 
   // Dashboard
   const fetchDashboard = useCallback(async () => {
@@ -139,6 +140,9 @@ export function AdminPortal() {
     if (activeTab === 'dashboard') fetchDashboard();
     if (activeTab === 'directory') {
       fetchEmployees(0);
+      fetchUsers();
+    }
+    if (activeTab === 'system-accounts') {
       fetchUsers();
     }
     if (activeTab === 'history') {
@@ -260,11 +264,23 @@ export function AdminPortal() {
   const tabs: { key: Tab; label: string; icon: string }[] = [
     { key: 'dashboard', label: 'Dashboard', icon: '📊' },
     { key: 'directory', label: 'Directory', icon: '👥' },
+    { key: 'system-accounts', label: 'System Accounts', icon: '🔑' },
     { key: 'history', label: 'History', icon: '📋' },
   ];
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', background: 'var(--color-bg)' }}>
+      <style>{`
+        .btn-ghost-danger {
+          background: transparent !important;
+          color: #ef4444 !important;
+          border: 1px solid transparent !important;
+        }
+        .btn-ghost-danger:hover:not(:disabled) {
+          background: rgba(239, 68, 68, 0.1) !important;
+          color: #f87171 !important;
+        }
+      `}</style>
       {/* Sidebar */}
       <aside style={{
         width: '240px',
@@ -386,13 +402,32 @@ export function AdminPortal() {
               Manage employee profiles and web portal access. Deactivating an employee profile completely blocks them from redeeming snacks, suspends their portal login account, and terminates any active sessions on all devices.
             </p>
 
-            <div style={{ marginBottom: '16px', display: 'flex', gap: '8px' }}>
-              <Input
+            <div style={{ marginBottom: '16px', display: 'flex', gap: '8px', alignItems: 'stretch' }}>
+              <input
                 placeholder="Search employees..."
                 value={empSearch}
                 onChange={(e) => setEmpSearch(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && fetchEmployees(0)}
-                style={{ marginBottom: 0, flex: 1 }}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  background: 'rgba(21, 21, 19, 0.6)',
+                  border: '1px solid #3e3e3a',
+                  borderRadius: '10px',
+                  color: '#f1f5f9',
+                  fontSize: '14px',
+                  fontFamily: 'inherit',
+                  outline: 'none',
+                  transition: 'all 200ms',
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = 'var(--color-accent)';
+                  e.target.style.boxShadow = '0 0 0 3px rgba(255, 206, 0, 0.15)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = '#3e3e3a';
+                  e.target.style.boxShadow = 'none';
+                }}
               />
               <Button variant="secondary" onClick={() => fetchEmployees(0)}>Search</Button>
             </div>
@@ -496,18 +531,36 @@ export function AdminPortal() {
 
                           {/* Status Action */}
                           <td style={{ padding: '10px 12px' }}>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={async () => {
-                                await employeeApi.update(emp.id, { active: !emp.active });
-                                showToast(`Employee profile ${emp.active ? 'deactivated' : 'activated'}`, 'info');
-                                fetchEmployees(empPage);
-                                fetchUsers();
-                              }}
-                            >
-                              {emp.active ? 'Deactivate' : 'Activate'}
-                            </Button>
+                            {linkedUser?.username !== user?.username ? (
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: '200px' }}>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  style={{ width: '110px' }}
+                                  onClick={async () => {
+                                    await employeeApi.update(emp.id, { active: !emp.active });
+                                    showToast(`Employee profile ${emp.active ? 'deactivated' : 'activated'}`, 'info');
+                                    fetchEmployees(empPage);
+                                    fetchUsers();
+                                  }}
+                                >
+                                  {emp.active ? 'Deactivate' : 'Activate'}
+                                </Button>
+                                {!emp.active && (
+                                  <Button
+                                    variant="ghost"
+                                    className="btn-ghost-danger"
+                                    size="sm"
+                                    style={{ width: '80px' }}
+                                    onClick={() => setShowDeleteConfirm({ id: emp.id, name: emp.name, type: 'employee' })}
+                                  >
+                                    Delete
+                                  </Button>
+                                )}
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>Logged In (Self)</span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -525,60 +578,98 @@ export function AdminPortal() {
                 )}
               </div>
             )}
+          </div>
+        )}
 
-            {/* Standalone System Accounts Section */}
-            <Card style={{ marginTop: '36px', padding: '24px', background: 'rgba(21, 21, 19, 0.4)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <div>
-                  <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#f1f5f9' }}>System Accounts</h3>
-                  <p style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>Standalone login accounts (Admins & Distributors)</p>
-                </div>
-                <Button variant="secondary" onClick={() => setShowCreateSystemUser(true)}>+ Add System User</Button>
-              </div>
+        {/* ===== System Accounts ===== */}
+        {activeTab === 'system-accounts' && (
+          <div className="animate-fade-in">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <h2 style={{ fontSize: '24px', fontWeight: 700, color: '#f1f5f9' }}>System Accounts</h2>
+              <Button onClick={() => setShowCreateSystemUser(true)}>+ Add System User</Button>
+            </div>
+            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '24px', lineHeight: '1.5' }}>
+              Manage standalone login accounts for System Administrators and Distributors. Note that these are separate from employee profile logins.
+            </p>
 
-              {usersLoading ? <Spinner /> : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 4px' }}>
-                    <thead>
-                      <tr>
-                        {['Username', 'Role', 'Status', 'Actions'].map((h) => (
-                          <th key={h} style={{
-                            textAlign: 'left', padding: '8px 12px', color: '#64748b',
-                            fontSize: '12px', fontWeight: 600, textTransform: 'uppercase'
-                          }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {users.filter((u) => u.employeeId === null).map((u) => (
-                        <tr key={u.id} style={{ background: 'rgba(21, 21, 19, 0.25)' }}>
-                          <td style={{ padding: '12px', color: '#f1f5f9', fontSize: '14px', fontWeight: 500 }}>
-                            <div>{u.username}</div>
-                            <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px', fontWeight: 'normal' }}>
-                              Key: <Spoiler value={u.passwordRaw || 'N/A'} color="#ffce00" />
-                            </div>
-                          </td>
-                          <td style={{ padding: '12px' }}>
-                            <Badge variant={u.role === 'ADMIN' ? 'danger' : 'warning'}>{u.role}</Badge>
-                          </td>
-                          <td style={{ padding: '12px' }}>
-                            <Badge variant={u.active ? 'success' : 'danger'}>{u.active ? 'Active' : 'Inactive'}</Badge>
-                          </td>
-                          <td style={{ padding: '12px', display: 'flex', gap: '6px' }}>
-                            <Button variant="ghost" size="sm" onClick={() => { setShowResetPw(u.id); setResetPwValue(''); }}>Reset PW</Button>
-                            <Button variant="ghost" size="sm" onClick={async () => {
-                              await userApi.toggleActive(u.id);
-                              showToast('Status toggled', 'info');
-                              fetchUsers();
-                            }}>{u.active ? 'Deactivate' : 'Activate'}</Button>
-                          </td>
-                        </tr>
+            {usersLoading ? <Spinner /> : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{
+                  width: '100%',
+                  borderCollapse: 'separate',
+                  borderSpacing: '0 4px',
+                }}>
+                  <thead>
+                    <tr>
+                      {['Username', 'Role', 'Status', 'Actions'].map((h) => (
+                        <th key={h} style={{
+                          textAlign: 'left',
+                          padding: '8px 12px',
+                          color: '#64748b',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em',
+                        }}>{h}</th>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Card>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.filter((u) => u.employeeId === null).map((u) => (
+                      <tr key={u.id} style={{
+                        background: 'rgba(21, 21, 19, 0.4)',
+                        borderRadius: '10px',
+                      }}>
+                        <td style={{ padding: '12px', color: '#f1f5f9', fontSize: '14px', fontWeight: 500 }}>
+                          <div>{u.username}</div>
+                          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px', fontWeight: 'normal' }}>
+                            Key: <Spoiler value={u.passwordRaw || 'N/A'} color="#ffce00" />
+                          </div>
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <Badge variant={u.role === 'ADMIN' ? 'danger' : 'warning'}>{u.role}</Badge>
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <Badge variant={u.active ? 'success' : 'danger'}>{u.active ? 'Active' : 'Inactive'}</Badge>
+                        </td>
+                        <td style={{ padding: '12px', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          <Button variant="ghost" size="sm" onClick={() => { setShowResetPw(u.id); setResetPwValue(''); }}>Reset PW</Button>
+                          {u.username !== user?.username ? (
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: '200px' }}>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                style={{ width: '110px' }}
+                                onClick={async () => {
+                                  await userApi.toggleActive(u.id);
+                                  showToast('Status toggled', 'info');
+                                  fetchUsers();
+                                }}
+                              >
+                                {u.active ? 'Deactivate' : 'Activate'}
+                              </Button>
+                              {!u.active && (
+                                <Button
+                                  variant="ghost"
+                                  className="btn-ghost-danger"
+                                  size="sm"
+                                  style={{ width: '80px' }}
+                                  onClick={() => setShowDeleteConfirm({ id: u.id, name: `@${u.username}`, type: 'user' })}
+                                >
+                                  Delete
+                                </Button>
+                              )}
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', paddingLeft: '8px' }}>Logged In (Self)</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
@@ -590,13 +681,32 @@ export function AdminPortal() {
               <p style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>Select an employee to see their total snacks consumed and detailed redemption logs.</p>
             </div>
 
-            <div style={{ marginBottom: '16px', display: 'flex', gap: '8px' }}>
-              <Input
+            <div style={{ marginBottom: '16px', display: 'flex', gap: '8px', alignItems: 'stretch' }}>
+              <input
                 placeholder="Search employees by name or code..."
                 value={historySearch}
                 onChange={(e) => setHistorySearch(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && fetchHistoryEmployees(0)}
-                style={{ marginBottom: 0, flex: 1 }}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  background: 'rgba(21, 21, 19, 0.6)',
+                  border: '1px solid #3e3e3a',
+                  borderRadius: '10px',
+                  color: '#f1f5f9',
+                  fontSize: '14px',
+                  fontFamily: 'inherit',
+                  outline: 'none',
+                  transition: 'all 200ms',
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = 'var(--color-accent)';
+                  e.target.style.boxShadow = '0 0 0 3px rgba(255, 206, 0, 0.15)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = '#3e3e3a';
+                  e.target.style.boxShadow = 'none';
+                }}
               />
               <Button variant="secondary" onClick={() => fetchHistoryEmployees(0)}>Search</Button>
             </div>
@@ -860,6 +970,62 @@ export function AdminPortal() {
             setShowResetPin(null);
           }
         }}>Reset PIN</Button>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal 
+        isOpen={showDeleteConfirm !== null} 
+        onClose={() => setShowDeleteConfirm(null)} 
+        title="⚠️ Permanent Deletion Warning"
+        maxWidth="420px"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <p style={{ color: '#e2e8f0', fontSize: '14px', lineHeight: '1.5' }}>
+            Are you sure you want to permanently delete {showDeleteConfirm?.type === 'employee' ? 'employee' : 'system user'} <strong>{showDeleteConfirm?.name}</strong>?
+          </p>
+          <div style={{ 
+            color: '#f87171', 
+            fontSize: '13px', 
+            lineHeight: '1.5', 
+            padding: '12px', 
+            background: 'rgba(239, 68, 68, 0.08)', 
+            borderRadius: '8px', 
+            border: '1px solid rgba(239, 68, 68, 0.2)' 
+          }}>
+            <strong>CRITICAL WARNING:</strong> This action is completely irreversible. 
+            {showDeleteConfirm?.type === 'employee' 
+              ? ' This will permanently remove their employee profile, their linked login account, and ALL of their snack redemption history.'
+              : ' This will permanently remove their user credentials and any associated system logs.'}
+          </div>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+            <Button variant="secondary" fullWidth onClick={() => setShowDeleteConfirm(null)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="danger"
+              fullWidth 
+              onClick={async () => {
+                if (!showDeleteConfirm) return;
+                try {
+                  if (showDeleteConfirm.type === 'employee') {
+                    await employeeApi.delete(showDeleteConfirm.id);
+                    showToast('Employee deleted permanently', 'success');
+                    fetchEmployees(empPage);
+                  } else {
+                    await userApi.delete(showDeleteConfirm.id);
+                    showToast('System user deleted permanently', 'success');
+                  }
+                  fetchUsers();
+                  setShowDeleteConfirm(null);
+                } catch (err: any) {
+                  showToast(err.response?.data?.message || 'Deletion failed', 'error');
+                }
+              }}
+            >
+              Permanently Delete
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

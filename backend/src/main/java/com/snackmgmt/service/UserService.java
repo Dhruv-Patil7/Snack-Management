@@ -8,6 +8,7 @@ import com.snackmgmt.enums.Role;
 import com.snackmgmt.exception.ResourceNotFoundException;
 import com.snackmgmt.repository.EmployeeRepository;
 import com.snackmgmt.repository.UserRepository;
+import com.snackmgmt.repository.RedemptionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final EmployeeRepository employeeRepository;
     private final PasswordEncoder passwordEncoder;
+    private final RedemptionRepository redemptionRepository;
 
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
@@ -93,10 +95,30 @@ public class UserService {
     }
 
     public void toggleActive(Long id) {
+        String currentUserId = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+        if (id.toString().equals(currentUserId)) {
+            throw new IllegalArgumentException("You cannot deactivate or suspend your own account");
+        }
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
         user.setActive(!user.getActive());
         userRepository.save(user);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void deleteUser(Long id) {
+        String currentUserId = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+        if (id.toString().equals(currentUserId)) {
+            throw new IllegalArgumentException("You cannot delete your own account");
+        }
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+
+        // Delete redemptions where this user is the distributor
+        redemptionRepository.deleteByDistributorId(id);
+
+        // Delete user
+        userRepository.delete(user);
     }
 
     private UserResponse toResponse(User u) {
