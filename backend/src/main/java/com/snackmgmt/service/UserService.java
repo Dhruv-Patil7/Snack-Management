@@ -108,8 +108,8 @@ public class UserService {
                 .employeeName(u.getEmployee() != null ? u.getEmployee().getName() : null)
                 .active(u.getActive())
                 .createdAt(u.getCreatedAt().format(FORMATTER))
-                .passwordRaw(u.getPasswordRaw())
-                .pinRaw(u.getPinRaw())
+                .passwordRaw(u.getPasswordRaw() != null && !u.getPasswordRaw().isEmpty() ? u.getPasswordRaw() : u.getPasswordHash())
+                .pinRaw(u.getPinRaw() != null && !u.getPinRaw().isEmpty() ? u.getPinRaw() : u.getPinHash())
                 .build();
     }
 }

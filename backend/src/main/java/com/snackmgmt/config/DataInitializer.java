@@ -30,6 +30,7 @@ public class DataInitializer implements CommandLineRunner {
             User admin = User.builder()
                     .username("admin")
                     .passwordHash(passwordEncoder.encode("admin123"))
+                    .passwordRaw("admin123")
                     .role(Role.ADMIN)
                     .active(true)
                     .build();
@@ -42,6 +43,7 @@ public class DataInitializer implements CommandLineRunner {
             User distributor = User.builder()
                     .username("distributor")
                     .passwordHash(passwordEncoder.encode("distributor123"))
+                    .passwordRaw("distributor123")
                     .role(Role.DISTRIBUTOR)
                     .active(true)
                     .build();
@@ -67,7 +69,9 @@ public class DataInitializer implements CommandLineRunner {
                     .employee(employee)
                     .username("employee")
                     .passwordHash(passwordEncoder.encode("employee123"))
+                    .passwordRaw("employee123")
                     .pinHash(passwordEncoder.encode("1234"))
+                    .pinRaw("1234")
                     .role(Role.EMPLOYEE)
                     .active(true)
                     .build();

@@ -6,7 +6,9 @@ import com.snackmgmt.dto.response.EmployeeResponse;
 import com.snackmgmt.entity.Employee;
 import com.snackmgmt.enums.EmployeeType;
 import com.snackmgmt.exception.ResourceNotFoundException;
+import com.snackmgmt.entity.User;
 import com.snackmgmt.repository.EmployeeRepository;
+import com.snackmgmt.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
@@ -29,6 +31,7 @@ import java.util.stream.Collectors;
 public class EmployeeService {
 
     private final EmployeeRepository employeeRepository;
+    private final UserRepository userRepository;
 
     @Value("${app.upload.photo-dir}")
     private String photoDir;
@@ -62,7 +65,14 @@ public class EmployeeService {
 
         if (request.getName() != null) employee.setName(request.getName());
         if (request.getDepartment() != null) employee.setDepartment(request.getDepartment());
-        if (request.getActive() != null) employee.setActive(request.getActive());
+        if (request.getActive() != null) {
+            employee.setActive(request.getActive());
+            // Sync with associated user login account
+            userRepository.findByEmployeeId(id).ifPresent(user -> {
+                user.setActive(request.getActive());
+                userRepository.save(user);
+            });
+        }
         if (request.getEmployeeType() != null) {
             employee.setEmployeeType(EmployeeType.valueOf(request.getEmployeeType().toUpperCase()));
         }
@@ -99,6 +109,11 @@ public class EmployeeService {
                 .orElseThrow(() -> new ResourceNotFoundException("Employee", "id", id));
         employee.setActive(false);
         employeeRepository.save(employee);
+        // Sync with associated user login account
+        userRepository.findByEmployeeId(id).ifPresent(user -> {
+            user.setActive(false);
+            userRepository.save(user);
+        });
     }
 
     public EmployeeResponse uploadPhoto(Long id, MultipartFile file) throws IOException {

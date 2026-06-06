@@ -14,6 +14,32 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
 type Tab = 'dashboard' | 'directory' | 'history';
 
+function Spoiler({ value, color }: { value: string; color: string }) {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <code
+      onClick={() => setRevealed(!revealed)}
+      style={{
+        color,
+        fontFamily: 'monospace',
+        filter: revealed ? 'none' : 'blur(4.5px)',
+        cursor: 'pointer',
+        userSelect: revealed ? 'auto' : 'none',
+        background: 'rgba(255, 255, 255, 0.08)',
+        padding: '1px 5px',
+        borderRadius: '4px',
+        marginLeft: '4px',
+        marginRight: '4px',
+        transition: 'filter 150ms ease',
+        display: 'inline-block',
+      }}
+      title={revealed ? 'Click to hide' : 'Click to reveal'}
+    >
+      {value}
+    </code>
+  );
+}
+
 export function AdminPortal() {
   const { user, logout } = useAuth();
   const { showToast } = useToast();
@@ -352,10 +378,13 @@ export function AdminPortal() {
         {/* ===== Directory (Merged Employees & Users) ===== */}
         {activeTab === 'directory' && (
           <div className="animate-fade-in">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <h2 style={{ fontSize: '24px', fontWeight: 700, color: '#f1f5f9' }}>Directory & Accounts</h2>
               <Button onClick={() => setShowCreateEmp(true)}>+ Add Employee</Button>
             </div>
+            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '24px', lineHeight: '1.5' }}>
+              Manage employee profiles and web portal access. Deactivating an employee profile completely blocks them from redeeming snacks, suspends their portal login account, and terminates any active sessions on all devices.
+            </p>
 
             <div style={{ marginBottom: '16px', display: 'flex', gap: '8px' }}>
               <Input
@@ -377,7 +406,7 @@ export function AdminPortal() {
                 }}>
                   <thead>
                     <tr>
-                      {['Photo', 'Code', 'Name', 'Department', 'Status', 'User Account', 'Profile Action'].map((h) => (
+                      {['Photo', 'Code', 'Name', 'Department', 'Login Account', 'Status', 'Action'].map((h) => (
                         <th key={h} style={{
                           textAlign: 'left',
                           padding: '8px 12px',
@@ -434,33 +463,20 @@ export function AdminPortal() {
                           <td style={{ padding: '10px 12px', color: '#f1f5f9', fontSize: '14px', fontWeight: 500 }}>{emp.name}</td>
                           <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '14px' }}>{emp.department || '-'}</td>
 
-                          {/* Profile Active Status */}
-                          <td style={{ padding: '10px 12px' }}>
-                            <Badge variant={emp.active ? 'success' : 'danger'}>{emp.active ? 'Active' : 'Inactive'}</Badge>
-                          </td>
-
-                          {/* Linked User Account Info & Actions */}
+                          {/* Linked User Account Info & Reset Actions */}
                           <td style={{ padding: '10px 12px' }}>
                             {linkedUser ? (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                   <strong style={{ color: '#f1f5f9', fontSize: '13px' }}>@{linkedUser.username}</strong>
-                                  <Badge variant={linkedUser.active ? 'success' : 'danger'}>
-                                    {linkedUser.active ? 'Active Login' : 'Suspended'}
-                                  </Badge>
                                 </div>
                                 <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                                  Key: <code style={{ color: '#ffce00', fontFamily: 'monospace' }}>{linkedUser.passwordRaw || 'N/A'}</code>
-                                  {linkedUser.pinRaw && <> | PIN: <code style={{ color: '#38bdf8', fontFamily: 'monospace' }}>{linkedUser.pinRaw}</code></>}
+                                  Key: <Spoiler value={linkedUser.passwordRaw || 'N/A'} color="#ffce00" />
+                                  {linkedUser.pinRaw && <> | PIN: <Spoiler value={linkedUser.pinRaw} color="#38bdf8" /></>}
                                 </div>
                                 <div style={{ display: 'flex', gap: '4px' }}>
                                   <Button variant="ghost" size="sm" style={{ padding: '2px 6px', fontSize: '11px' }} onClick={() => { setShowResetPw(linkedUser.id); setResetPwValue(''); }}>PW</Button>
                                   <Button variant="ghost" size="sm" style={{ padding: '2px 6px', fontSize: '11px' }} onClick={() => { setShowResetPin(linkedUser.id); setResetPinValue(''); }}>PIN</Button>
-                                  <Button variant="ghost" size="sm" style={{ padding: '2px 6px', fontSize: '11px' }} onClick={async () => {
-                                    await userApi.toggleActive(linkedUser.id);
-                                    showToast('Login status updated', 'info');
-                                    fetchUsers();
-                                  }}>{linkedUser.active ? 'Suspend' : 'Unsuspend'}</Button>
                                 </div>
                               </div>
                             ) : (
@@ -473,7 +489,12 @@ export function AdminPortal() {
                             )}
                           </td>
 
-                          {/* Profile Status Action */}
+                          {/* Active Status */}
+                          <td style={{ padding: '10px 12px' }}>
+                            <Badge variant={emp.active ? 'success' : 'danger'}>{emp.active ? 'Active' : 'Inactive'}</Badge>
+                          </td>
+
+                          {/* Status Action */}
                           <td style={{ padding: '10px 12px' }}>
                             <Button
                               variant="ghost"
@@ -482,6 +503,7 @@ export function AdminPortal() {
                                 await employeeApi.update(emp.id, { active: !emp.active });
                                 showToast(`Employee profile ${emp.active ? 'deactivated' : 'activated'}`, 'info');
                                 fetchEmployees(empPage);
+                                fetchUsers();
                               }}
                             >
                               {emp.active ? 'Deactivate' : 'Activate'}
@@ -533,7 +555,7 @@ export function AdminPortal() {
                           <td style={{ padding: '12px', color: '#f1f5f9', fontSize: '14px', fontWeight: 500 }}>
                             <div>{u.username}</div>
                             <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px', fontWeight: 'normal' }}>
-                              Key: <code style={{ color: '#ffce00', fontFamily: 'monospace' }}>{u.passwordRaw || 'N/A'}</code>
+                              Key: <Spoiler value={u.passwordRaw || 'N/A'} color="#ffce00" />
                             </div>
                           </td>
                           <td style={{ padding: '12px' }}>
