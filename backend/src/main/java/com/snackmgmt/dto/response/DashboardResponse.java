@@ -3,6 +3,7 @@ package com.snackmgmt.dto.response;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import java.util.List;
 
 @Data
 @Builder
@@ -12,4 +13,6 @@ public class DashboardResponse {
     private long eveningCount;
     private long monthlyTotal;
     private long totalActiveEmployees;
+    private List<DailyStat> weeklyStats;
+    private List<DistributorStat> distributorStats;
 }

@@ -1,6 +1,7 @@
 package com.snackmgmt.controller;
 
 import com.snackmgmt.dto.request.CreateUserRequest;
+import com.snackmgmt.dto.request.UpdateUserRequest;
 import com.snackmgmt.dto.response.UserResponse;
 import com.snackmgmt.service.UserService;
 import jakarta.validation.Valid;
@@ -53,6 +54,13 @@ public class UserController {
     public ResponseEntity<Map<String, String>> toggleActive(@PathVariable Long id) {
         userService.toggleActive(id);
         return ResponseEntity.ok(Map.of("message", "User status toggled"));
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<UserResponse> updateUser(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateUserRequest request) {
+        return ResponseEntity.ok(userService.updateUser(id, request));
     }
 
     @DeleteMapping("/{id}")

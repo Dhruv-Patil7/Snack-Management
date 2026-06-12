@@ -78,6 +78,26 @@ public class UserService {
         return toResponse(user);
     }
 
+    public UserResponse updateUser(Long id, com.snackmgmt.dto.request.UpdateUserRequest request) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+
+        if (request.getUsername() != null && !request.getUsername().isBlank() && !request.getUsername().equals(user.getUsername())) {
+            if (userRepository.existsByUsername(request.getUsername())) {
+                throw new IllegalArgumentException("Username already exists: " + request.getUsername());
+            }
+            user.setUsername(request.getUsername());
+        }
+
+        if (request.getRole() != null && !request.getRole().isBlank()) {
+            Role role = Role.valueOf(request.getRole().toUpperCase());
+            user.setRole(role);
+        }
+
+        user = userRepository.save(user);
+        return toResponse(user);
+    }
+
     public void resetPassword(Long id, String newPassword) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));

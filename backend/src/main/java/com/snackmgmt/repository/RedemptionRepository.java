@@ -72,6 +72,26 @@ public interface RedemptionRepository extends JpaRepository<Redemption, Long> {
            "ORDER BY r.redeemedAt DESC")
     List<Redemption> findByDate(@Param("date") LocalDate date);
 
+    // Weekly stats: group by date and session for last 7 days
+    @Query("SELECT CAST(r.redeemedAt AS LocalDate) AS day, r.session, COUNT(r) " +
+           "FROM Redemption r " +
+           "WHERE r.redeemedAt >= :startDate AND r.redeemedAt < :endDate " +
+           "GROUP BY CAST(r.redeemedAt AS LocalDate), r.session " +
+           "ORDER BY day")
+    List<Object[]> findWeeklyStatsRaw(
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
+
+    // Distributor stats: group by distributor for current month
+    @Query("SELECT r.distributor.username, COUNT(r) " +
+           "FROM Redemption r " +
+           "WHERE r.redeemedAt >= :startDate AND r.redeemedAt < :endDate " +
+           "GROUP BY r.distributor.username " +
+           "ORDER BY COUNT(r) DESC")
+    List<Object[]> findDistributorStatsRaw(
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
+
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.transaction.annotation.Transactional
     void deleteByEmployeeId(Long employeeId);

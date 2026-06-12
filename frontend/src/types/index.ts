@@ -66,11 +66,25 @@ export interface Redemption {
   distributorName: string;
 }
 
+export interface DailyStat {
+  date: string;
+  day: string;
+  morning: number;
+  evening: number;
+}
+
+export interface DistributorStat {
+  distributorName: string;
+  count: number;
+}
+
 export interface DashboardData {
   morningCount: number;
   eveningCount: number;
   monthlyTotal: number;
   totalActiveEmployees: number;
+  weeklyStats: DailyStat[];
+  distributorStats: DistributorStat[];
 }
 
 export interface ApiError {

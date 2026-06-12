@@ -121,6 +121,9 @@ export const userApi = {
   create: (data: CreateUserRequest) =>
     api.post<UserAccount>('/api/users', data),
 
+  update: (id: number, data: { username?: string; role?: string }) =>
+    api.put<UserAccount>(`/api/users/${id}`, data),
+
   resetPassword: (id: number, password: string) =>
     api.post(`/api/users/${id}/reset-password`, { password }),
 

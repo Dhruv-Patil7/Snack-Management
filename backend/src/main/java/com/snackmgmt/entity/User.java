@@ -20,7 +20,7 @@ public class User {
     private Long id;
 
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "employee_id")
+    @JoinColumn(name = "employee_id", unique = true)
     private Employee employee;
 
     @Column(nullable = false, unique = true, length = 100)

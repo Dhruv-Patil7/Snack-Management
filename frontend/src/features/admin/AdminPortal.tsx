@@ -92,6 +92,25 @@ export function AdminPortal() {
   const [resetPinValue, setResetPinValue] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ id: number; name: string; type: 'employee' | 'user' } | null>(null);
 
+  // Edit Employee State
+  const [showEditEmp, setShowEditEmp] = useState<Employee | null>(null);
+  const [editEmpForm, setEditEmpForm] = useState({
+    name: '',
+    department: '',
+    employeeType: 'OFFICE',
+    username: '',
+    password: '',
+    pin: '',
+  });
+
+  // Edit System User State
+  const [showEditSystemUser, setShowEditSystemUser] = useState<UserAccount | null>(null);
+  const [editSystemUserForm, setEditSystemUserForm] = useState({
+    username: '',
+    role: '',
+    password: '',
+  });
+
   // Dashboard
   const fetchDashboard = useCallback(async () => {
     setDashLoading(true);
@@ -135,6 +154,88 @@ export function AdminPortal() {
     } catch { showToast('Failed to load employees for history', 'error'); }
     finally { setHistoryEmpLoading(false); }
   }, [historySearch, showToast]);
+
+  const handleStartEditEmployee = (emp: Employee) => {
+    const linkedUser = users.find((u) => u.employeeId === emp.id);
+    setEditEmpForm({
+      name: emp.name,
+      department: emp.department || '',
+      employeeType: emp.employeeType,
+      username: linkedUser ? linkedUser.username : '',
+      password: '',
+      pin: '',
+    });
+    setShowEditEmp(emp);
+  };
+
+  const handleSaveEmployeeChanges = async () => {
+    if (!showEditEmp) return;
+    try {
+      // 1. Update employee profile
+      await employeeApi.update(showEditEmp.id, {
+        name: editEmpForm.name,
+        department: editEmpForm.department || undefined,
+        employeeType: editEmpForm.employeeType,
+      });
+
+      // 2. Update user credentials if linked
+      const linkedUser = users.find((u) => u.employeeId === showEditEmp.id);
+      if (linkedUser) {
+        // Update username if changed
+        if (editEmpForm.username && editEmpForm.username !== linkedUser.username) {
+          await userApi.update(linkedUser.id, { username: editEmpForm.username });
+        }
+        if (editEmpForm.password) {
+          await userApi.resetPassword(linkedUser.id, editEmpForm.password);
+        }
+        if (editEmpForm.pin) {
+          await userApi.resetPin(linkedUser.id, editEmpForm.pin);
+        }
+      }
+
+      showToast('Employee details updated successfully', 'success');
+      setShowEditEmp(null);
+      fetchEmployees(empPage);
+      fetchUsers();
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Failed to update employee details', 'error');
+    }
+  };
+
+  const handleStartEditSystemUser = (u: UserAccount) => {
+    setEditSystemUserForm({
+      username: u.username,
+      role: u.role,
+      password: '',
+    });
+    setShowEditSystemUser(u);
+  };
+
+  const handleSaveSystemUserChanges = async () => {
+    if (!showEditSystemUser) return;
+    try {
+      const hasUsernameChanged = editSystemUserForm.username !== showEditSystemUser.username;
+      const hasRoleChanged = editSystemUserForm.role !== showEditSystemUser.role;
+      
+      // Update username and/or role if changed
+      if (hasUsernameChanged || hasRoleChanged) {
+        await userApi.update(showEditSystemUser.id, {
+          username: hasUsernameChanged ? editSystemUserForm.username : undefined,
+          role: hasRoleChanged ? editSystemUserForm.role : undefined,
+        });
+      }
+
+      if (editSystemUserForm.password) {
+        await userApi.resetPassword(showEditSystemUser.id, editSystemUserForm.password);
+      }
+
+      showToast('System user updated successfully', 'success');
+      setShowEditSystemUser(null);
+      fetchUsers();
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Failed to update system user', 'error');
+    }
+  };
 
   useEffect(() => {
     if (activeTab === 'dashboard') fetchDashboard();
@@ -369,24 +470,257 @@ export function AdminPortal() {
           <div className="animate-fade-in">
             <h2 style={{ fontSize: '24px', fontWeight: 700, color: '#f1f5f9', marginBottom: '24px' }}>Dashboard</h2>
             {dashLoading ? <Spinner /> : dashboard && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-                <Card glow>
-                  <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>☀️ Morning Today</p>
-                  <p style={{ fontSize: '36px', fontWeight: 800, color: '#fcd34d' }}>{dashboard.morningCount}</p>
-                </Card>
-                <Card glow>
-                  <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>🌙 Evening Today</p>
-                  <p style={{ fontSize: '36px', fontWeight: 800, color: '#93c5fd' }}>{dashboard.eveningCount}</p>
-                </Card>
-                <Card glow>
-                  <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>📅 This Month</p>
-                  <p style={{ fontSize: '36px', fontWeight: 800, color: '#ffce00' }}>{dashboard.monthlyTotal}</p>
-                </Card>
-                <Card>
-                  <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>👥 Active Employees</p>
-                  <p style={{ fontSize: '36px', fontWeight: 800, color: '#f1f5f9' }}>{dashboard.totalActiveEmployees}</p>
-                </Card>
-              </div>
+              <>
+                {/* ── Stat Cards ── */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '28px' }}>
+                  {[
+                    { label: '☀️ Morning Today', value: dashboard.morningCount, color: '#fbbf24', gradient: 'linear-gradient(135deg, rgba(251,191,36,0.15) 0%, rgba(251,191,36,0.04) 100%)' },
+                    { label: '🌙 Evening Today', value: dashboard.eveningCount, color: '#60a5fa', gradient: 'linear-gradient(135deg, rgba(96,165,250,0.15) 0%, rgba(96,165,250,0.04) 100%)' },
+                    { label: '📅 This Month', value: dashboard.monthlyTotal, color: '#ffce00', gradient: 'linear-gradient(135deg, rgba(255,206,0,0.15) 0%, rgba(255,206,0,0.04) 100%)' },
+                    { label: '👥 Active Employees', value: dashboard.totalActiveEmployees, color: '#a78bfa', gradient: 'linear-gradient(135deg, rgba(167,139,250,0.15) 0%, rgba(167,139,250,0.04) 100%)' },
+                  ].map((c, i) => (
+                    <div key={i} style={{
+                      background: c.gradient,
+                      border: '1px solid rgba(255,255,255,0.06)',
+                      borderRadius: '14px',
+                      padding: '20px 22px',
+                      transition: 'transform 200ms ease, box-shadow 200ms ease',
+                      cursor: 'default',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = `0 8px 24px ${c.color}22`; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+                    >
+                      <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '10px', fontWeight: 500 }}>{c.label}</p>
+                      <p style={{ fontSize: '38px', fontWeight: 800, color: c.color, lineHeight: 1 }}>{c.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── Charts Row ── */}
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
+
+                  {/* Weekly Consumption Chart */}
+                  <div style={{
+                    background: 'rgba(21, 21, 19, 0.6)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    borderRadius: '14px',
+                    padding: '24px',
+                  }}>
+                    <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#f1f5f9', marginBottom: '4px' }}>Weekly Consumption</h3>
+                    <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>Shift-wise snack redemptions — last 7 days</p>
+
+                    {(() => {
+                      const stats = dashboard.weeklyStats || [];
+                      const maxVal = Math.max(...stats.map(s => Math.max(s.morning, s.evening)), 1);
+                      const chartH = 220;
+                      const barW = 22;
+                      const groupGap = 36;
+                      const chartW = stats.length * (barW * 2 + 8 + groupGap);
+                      const yTicks = 5;
+
+                      return (
+                        <div style={{ position: 'relative' }}>
+                          {/* Legend */}
+                          <div style={{ display: 'flex', gap: '18px', marginBottom: '14px', justifyContent: 'flex-end' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94a3b8' }}>
+                              <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#fbbf24', display: 'inline-block' }} /> Morning
+                            </span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94a3b8' }}>
+                              <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#60a5fa', display: 'inline-block' }} /> Evening
+                            </span>
+                          </div>
+
+                          <svg width="100%" viewBox={`0 0 ${chartW + 50} ${chartH + 50}`} style={{ overflow: 'visible' }}>
+                            {/* Y-axis grid lines and labels */}
+                            {Array.from({ length: yTicks + 1 }).map((_, i) => {
+                              const yVal = Math.round((maxVal / yTicks) * i);
+                              const y = chartH - (yVal / maxVal) * chartH + 10;
+                              return (
+                                <g key={`y-${i}`}>
+                                  <line x1="40" y1={y} x2={chartW + 40} y2={y} stroke="rgba(255,255,255,0.05)" strokeDasharray="4 4" />
+                                  <text x="34" y={y + 4} fill="#64748b" fontSize="10" textAnchor="end">{yVal}</text>
+                                </g>
+                              );
+                            })}
+
+                            {/* Bars */}
+                            {stats.map((s, i) => {
+                              const xBase = 46 + i * (barW * 2 + 8 + groupGap);
+                              const mH = (s.morning / maxVal) * chartH;
+                              const eH = (s.evening / maxVal) * chartH;
+                              const mY = chartH - mH + 10;
+                              const eY = chartH - eH + 10;
+
+                              return (
+                                <g key={i}>
+                                  {/* Morning bar */}
+                                  <rect x={xBase} y={mY} width={barW} height={mH} rx="4"
+                                    fill="url(#morningGrad)"
+                                    style={{ transition: 'all 400ms ease', cursor: 'pointer' }}
+                                    onMouseEnter={(e) => { (e.target as SVGRectElement).style.filter = 'brightness(1.3)'; }}
+                                    onMouseLeave={(e) => { (e.target as SVGRectElement).style.filter = 'none'; }}
+                                  >
+                                    <title>{s.day} {s.date} — Morning: {s.morning}</title>
+                                  </rect>
+                                  {/* Morning count label */}
+                                  {s.morning > 0 && (
+                                    <text x={xBase + barW / 2} y={mY - 5} fill="#fbbf24" fontSize="10" fontWeight="700" textAnchor="middle">{s.morning}</text>
+                                  )}
+
+                                  {/* Evening bar */}
+                                  <rect x={xBase + barW + 4} y={eY} width={barW} height={eH} rx="4"
+                                    fill="url(#eveningGrad)"
+                                    style={{ transition: 'all 400ms ease', cursor: 'pointer' }}
+                                    onMouseEnter={(e) => { (e.target as SVGRectElement).style.filter = 'brightness(1.3)'; }}
+                                    onMouseLeave={(e) => { (e.target as SVGRectElement).style.filter = 'none'; }}
+                                  >
+                                    <title>{s.day} {s.date} — Evening: {s.evening}</title>
+                                  </rect>
+                                  {/* Evening count label */}
+                                  {s.evening > 0 && (
+                                    <text x={xBase + barW + 4 + barW / 2} y={eY - 5} fill="#60a5fa" fontSize="10" fontWeight="700" textAnchor="middle">{s.evening}</text>
+                                  )}
+
+                                  {/* Day label */}
+                                  <text x={xBase + barW + 2} y={chartH + 26} fill="#94a3b8" fontSize="11" textAnchor="middle" fontWeight="600">{s.day}</text>
+                                  <text x={xBase + barW + 2} y={chartH + 40} fill="#64748b" fontSize="9" textAnchor="middle">{s.date}</text>
+                                </g>
+                              );
+                            })}
+
+                            {/* Gradient definitions */}
+                            <defs>
+                              <linearGradient id="morningGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#fbbf24" />
+                                <stop offset="100%" stopColor="#d97706" />
+                              </linearGradient>
+                              <linearGradient id="eveningGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#60a5fa" />
+                                <stop offset="100%" stopColor="#3b82f6" />
+                              </linearGradient>
+                            </defs>
+                          </svg>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Distributor Stats Panel */}
+                  <div style={{
+                    background: 'rgba(21, 21, 19, 0.6)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    borderRadius: '14px',
+                    padding: '24px',
+                  }}>
+                    <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#f1f5f9', marginBottom: '4px' }}>Distributor Performance</h3>
+                    <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>Snacks served this month</p>
+
+                    {(() => {
+                      const dStats = dashboard.distributorStats || [];
+                      const maxD = Math.max(...dStats.map(d => d.count), 1);
+                      const colors = ['#fbbf24', '#60a5fa', '#a78bfa', '#34d399', '#f472b6', '#fb923c', '#22d3ee', '#e879f9'];
+
+                      if (dStats.length === 0) {
+                        return <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '20px 0' }}>No data for this month yet</p>;
+                      }
+
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                          {dStats.map((d, i) => {
+                            const pct = Math.round((d.count / maxD) * 100);
+                            const color = colors[i % colors.length];
+                            return (
+                              <div key={d.distributorName}
+                                style={{ transition: 'transform 150ms ease', cursor: 'default' }}
+                                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateX(4px)'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateX(0)'; }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{
+                                      width: '24px', height: '24px', borderRadius: '6px',
+                                      background: `${color}22`, color, display: 'flex',
+                                      alignItems: 'center', justifyContent: 'center',
+                                      fontSize: '12px', fontWeight: 800,
+                                    }}>
+                                      {i + 1}
+                                    </span>
+                                    <span style={{ color: '#e2e8f0', fontSize: '13px', fontWeight: 600 }}>{d.distributorName}</span>
+                                  </div>
+                                  <span style={{ color, fontSize: '14px', fontWeight: 800 }}>{d.count}</span>
+                                </div>
+                                <div style={{
+                                  height: '6px',
+                                  background: 'rgba(255,255,255,0.04)',
+                                  borderRadius: '3px',
+                                  overflow: 'hidden',
+                                }}>
+                                  <div style={{
+                                    height: '100%',
+                                    width: `${pct}%`,
+                                    background: `linear-gradient(90deg, ${color}cc, ${color})`,
+                                    borderRadius: '3px',
+                                    transition: 'width 600ms ease-out',
+                                  }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                </div>
+
+                {/* ── Today's Shift Utilization ── */}
+                <div style={{
+                  marginTop: '20px',
+                  background: 'rgba(21, 21, 19, 0.6)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  borderRadius: '14px',
+                  padding: '24px',
+                }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#f1f5f9', marginBottom: '4px' }}>Today's Shift Utilization</h3>
+                  <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>
+                    Percentage of active employees who redeemed snacks today
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                    {[
+                      { label: 'Morning Shift', count: dashboard.morningCount, color: '#fbbf24', icon: '☀️' },
+                      { label: 'Evening Shift', count: dashboard.eveningCount, color: '#60a5fa', icon: '🌙' },
+                    ].map((shift) => {
+                      const pct = dashboard.totalActiveEmployees > 0 ? Math.round((shift.count / dashboard.totalActiveEmployees) * 100) : 0;
+                      const circumference = 2 * Math.PI * 40;
+                      const offset = circumference - (pct / 100) * circumference;
+                      return (
+                        <div key={shift.label} style={{
+                          display: 'flex', alignItems: 'center', gap: '24px',
+                          padding: '12px 16px', borderRadius: '12px',
+                          background: 'rgba(255,255,255,0.02)',
+                        }}>
+                          <svg width="100" height="100" style={{ flexShrink: 0 }}>
+                            <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="8" />
+                            <circle cx="50" cy="50" r="40" fill="none" stroke={shift.color} strokeWidth="8"
+                              strokeDasharray={circumference} strokeDashoffset={offset}
+                              strokeLinecap="round" transform="rotate(-90 50 50)"
+                              style={{ transition: 'stroke-dashoffset 800ms ease-out' }}
+                            />
+                            <text x="50" y="46" textAnchor="middle" fill={shift.color} fontSize="20" fontWeight="800">{pct}%</text>
+                            <text x="50" y="62" textAnchor="middle" fill="#64748b" fontSize="9">utilization</text>
+                          </svg>
+                          <div>
+                            <p style={{ fontSize: '15px', fontWeight: 700, color: '#e2e8f0', marginBottom: '4px' }}>{shift.icon} {shift.label}</p>
+                            <p style={{ fontSize: '13px', color: '#94a3b8' }}>
+                              <span style={{ color: shift.color, fontWeight: 700 }}>{shift.count}</span> of {dashboard.totalActiveEmployees} employees
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
             )}
           </div>
         )}
@@ -531,36 +865,45 @@ export function AdminPortal() {
 
                           {/* Status Action */}
                           <td style={{ padding: '10px 12px' }}>
-                            {linkedUser?.username !== user?.username ? (
-                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: '200px' }}>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  style={{ width: '110px' }}
-                                  onClick={async () => {
-                                    await employeeApi.update(emp.id, { active: !emp.active });
-                                    showToast(`Employee profile ${emp.active ? 'deactivated' : 'activated'}`, 'info');
-                                    fetchEmployees(empPage);
-                                    fetchUsers();
-                                  }}
-                                >
-                                  {emp.active ? 'Deactivate' : 'Activate'}
-                                </Button>
-                                {!emp.active && (
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: '280px' }}>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => handleStartEditEmployee(emp)}
+                              >
+                                Edit
+                              </Button>
+                              {linkedUser?.username !== user?.username ? (
+                                <>
                                   <Button
                                     variant="ghost"
-                                    className="btn-ghost-danger"
                                     size="sm"
-                                    style={{ width: '80px' }}
-                                    onClick={() => setShowDeleteConfirm({ id: emp.id, name: emp.name, type: 'employee' })}
+                                    style={{ width: '110px' }}
+                                    onClick={async () => {
+                                      await employeeApi.update(emp.id, { active: !emp.active });
+                                      showToast(`Employee profile ${emp.active ? 'deactivated' : 'activated'}`, 'info');
+                                      fetchEmployees(empPage);
+                                      fetchUsers();
+                                    }}
                                   >
-                                    Delete
+                                    {emp.active ? 'Deactivate' : 'Activate'}
                                   </Button>
-                                )}
-                              </div>
-                            ) : (
-                              <span style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>Logged In (Self)</span>
-                            )}
+                                  {!emp.active && (
+                                    <Button
+                                      variant="ghost"
+                                      className="btn-ghost-danger"
+                                      size="sm"
+                                      style={{ width: '80px' }}
+                                      onClick={() => setShowDeleteConfirm({ id: emp.id, name: emp.name, type: 'employee' })}
+                                    >
+                                      Delete
+                                    </Button>
+                                  )}
+                                </>
+                              ) : (
+                                <span style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', marginLeft: '8px' }}>Logged In (Self)</span>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -633,7 +976,7 @@ export function AdminPortal() {
                           <Badge variant={u.active ? 'success' : 'danger'}>{u.active ? 'Active' : 'Inactive'}</Badge>
                         </td>
                         <td style={{ padding: '12px', display: 'flex', gap: '6px', alignItems: 'center' }}>
-                          <Button variant="ghost" size="sm" onClick={() => { setShowResetPw(u.id); setResetPwValue(''); }}>Reset PW</Button>
+                          <Button variant="secondary" size="sm" onClick={() => handleStartEditSystemUser(u)}>Edit</Button>
                           {u.username !== user?.username ? (
                             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: '200px' }}>
                               <Button
@@ -876,7 +1219,8 @@ export function AdminPortal() {
             }}
           >
             <option value="OFFICE">Office Staff</option>
-            <option value="FIELD">Field / Contractor</option>
+            <option value="PLANT">Plant Staff</option>
+            <option value="CONTRACTOR">Contractor</option>
           </select>
         </div>
 
@@ -1026,6 +1370,117 @@ export function AdminPortal() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Edit Employee Modal */}
+      <Modal isOpen={showEditEmp !== null} onClose={() => setShowEditEmp(null)} title={`Edit Employee: ${showEditEmp?.name}`}>
+        <Input 
+          label="Full Name" 
+          value={editEmpForm.name} 
+          onChange={(e) => setEditEmpForm({ ...editEmpForm, name: e.target.value })} 
+          placeholder="e.g. John Doe" 
+          required 
+        />
+        <Input 
+          label="Department" 
+          value={editEmpForm.department} 
+          onChange={(e) => setEditEmpForm({ ...editEmpForm, department: e.target.value })} 
+          placeholder="e.g. Engineering" 
+        />
+        
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#94a3b8', marginBottom: '6px' }}>Employee Type</label>
+          <select
+            value={editEmpForm.employeeType}
+            onChange={(e) => setEditEmpForm({ ...editEmpForm, employeeType: e.target.value })}
+            style={{
+              width: '100%', padding: '10px 14px', background: 'rgba(21, 21, 19, 0.6)',
+              border: '1px solid #3e3e3a', borderRadius: '10px', color: '#f1f5f9',
+              fontSize: '14px', fontFamily: 'inherit',
+            }}
+          >
+            <option value="OFFICE">Office Staff</option>
+            <option value="PLANT">Plant Staff</option>
+            <option value="CONTRACTOR">Contractor</option>
+          </select>
+        </div>
+
+        {/* Credentials Edit section (only shown if the employee has a login account) */}
+        {showEditEmp && users.some((u) => u.employeeId === showEditEmp.id) ? (
+          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+            <h4 style={{ color: '#ffce00', fontSize: '13px', fontWeight: 600, textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.02em' }}>Update Login Credentials</h4>
+            <Input 
+              label="Username" 
+              value={editEmpForm.username} 
+              onChange={(e) => setEditEmpForm({ ...editEmpForm, username: e.target.value })} 
+              placeholder="e.g. john.doe" 
+              required
+            />
+            <Input 
+              label="New Password" 
+              type="password" 
+              value={editEmpForm.password} 
+              onChange={(e) => setEditEmpForm({ ...editEmpForm, password: e.target.value })} 
+              placeholder="Leave blank to keep unchanged" 
+            />
+            <Input 
+              label="New 4-digit PIN (for barcode scan fallback)" 
+              type="password" 
+              maxLength={4} 
+              value={editEmpForm.pin} 
+              onChange={(e) => setEditEmpForm({ ...editEmpForm, pin: e.target.value.replace(/\D/g, '') })} 
+              placeholder="Leave blank to keep unchanged" 
+            />
+          </div>
+        ) : (
+          <p style={{ color: '#64748b', fontSize: '12px', marginBottom: '20px', fontStyle: 'italic' }}>
+            This employee does not have a linked login account.
+          </p>
+        )}
+
+        <Button fullWidth onClick={handleSaveEmployeeChanges} disabled={!editEmpForm.name || (showEditEmp && users.some((u) => u.employeeId === showEditEmp.id) && !editEmpForm.username)}>
+          Save Changes
+        </Button>
+      </Modal>
+
+      {/* Edit System User Modal */}
+      <Modal isOpen={showEditSystemUser !== null} onClose={() => setShowEditSystemUser(null)} title={`Edit System Account: ${showEditSystemUser?.username}`}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
+          <Input 
+            label="Username" 
+            value={editSystemUserForm.username} 
+            onChange={(e) => setEditSystemUserForm({ ...editSystemUserForm, username: e.target.value })} 
+            placeholder="e.g. admin.office" 
+            required 
+          />
+          
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#94a3b8', marginBottom: '6px' }}>System Role</label>
+            <select
+              value={editSystemUserForm.role}
+              onChange={(e) => setEditSystemUserForm({ ...editSystemUserForm, role: e.target.value })}
+              style={{
+                width: '100%', padding: '10px 14px', background: 'rgba(21, 21, 19, 0.6)',
+                border: '1px solid #3e3e3a', borderRadius: '10px', color: '#f1f5f9',
+                fontSize: '14px', fontFamily: 'inherit',
+              }}
+            >
+              <option value="DISTRIBUTOR">Distributor (Scans QR codes)</option>
+              <option value="ADMIN">Administrator (Full control)</option>
+            </select>
+          </div>
+
+          <Input 
+            label="New Password" 
+            type="password" 
+            value={editSystemUserForm.password} 
+            onChange={(e) => setEditSystemUserForm({ ...editSystemUserForm, password: e.target.value })} 
+            placeholder="Leave blank to keep unchanged (min 6 characters)" 
+          />
+        </div>
+        <Button fullWidth onClick={handleSaveSystemUserChanges} disabled={!editSystemUserForm.username || (editSystemUserForm.password.length > 0 && editSystemUserForm.password.length < 6)}>
+          Save Changes
+        </Button>
       </Modal>
     </div>
   );
