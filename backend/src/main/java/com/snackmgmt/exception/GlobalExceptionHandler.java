@@ -35,7 +35,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(InvalidPinException.class)
     public ResponseEntity<ApiErrorResponse> handleInvalidPin(InvalidPinException ex) {
-        return buildResponse(HttpStatus.UNAUTHORIZED, "Invalid PIN", ex.getMessage());
+        return buildResponse(HttpStatus.BAD_REQUEST, "Invalid PIN", ex.getMessage());
     }
 
     @ExceptionHandler(BadCredentialsException.class)

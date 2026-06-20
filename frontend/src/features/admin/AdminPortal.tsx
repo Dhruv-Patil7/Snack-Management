@@ -3,14 +3,13 @@ import { useAuth } from '../../auth/AuthContext';
 import { useToast } from '../../components/Toast';
 import { dashboardApi, employeeApi, userApi } from '../../api';
 import { Button } from '../../components/Button';
-import { Card } from '../../components/Card';
 import { Input } from '../../components/Input';
 import { Modal } from '../../components/Modal';
 import { Badge } from '../../components/Badge';
 import { Spinner } from '../../components/Spinner';
 import type { Employee, UserAccount, Redemption, DashboardData } from '../../types';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 type Tab = 'dashboard' | 'directory' | 'system-accounts' | 'history';
 
@@ -1438,7 +1437,7 @@ export function AdminPortal() {
           </p>
         )}
 
-        <Button fullWidth onClick={handleSaveEmployeeChanges} disabled={!editEmpForm.name || (showEditEmp && users.some((u) => u.employeeId === showEditEmp.id) && !editEmpForm.username)}>
+        <Button fullWidth onClick={handleSaveEmployeeChanges} disabled={!editEmpForm.name || (!!showEditEmp && users.some((u) => u.employeeId === showEditEmp.id) && !editEmpForm.username)}>
           Save Changes
         </Button>
       </Modal>

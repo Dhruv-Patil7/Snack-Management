@@ -38,6 +38,9 @@ public class DataInitializer implements CommandLineRunner {
         // Clean up duplicate user accounts pointing to the same employee
         cleanDuplicateUserAccounts();
 
+        // Clean up default/unnecessary distributor accounts that might be leftover in the database
+        cleanDefaultDistributors();
+
         // 1. Seed Admin User
         if (!userRepository.existsByUsername("admin")) {
             User admin = User.builder()
@@ -51,14 +54,7 @@ public class DataInitializer implements CommandLineRunner {
             log.info("Seeded default admin user (admin / admin123)");
         }
 
-        // 2. Seed Distributor Users
-        createDistributorIfNotExist("distributor", "distributor123");
-        createDistributorIfNotExist("distributor_morning", "distributor123");
-        createDistributorIfNotExist("distributor_evening", "distributor123");
-        createDistributorIfNotExist("canteen_staff_1", "distributor123");
-        createDistributorIfNotExist("canteen_staff_2", "distributor123");
-
-        // 3. Seed Employee Users
+        // 2. Seed Employee Users
         createEmployeeIfNotExist("EMP001", "John Doe", "Engineering", EmployeeType.OFFICE, "employee", "employee123", "1234");
         createEmployeeIfNotExist("EMP007", "Sarah Connor", "Logistics", EmployeeType.PLANT, "sarahc", "employee123", "2222");
         createEmployeeIfNotExist("EMP003", "Mike Ross", "Legal", EmployeeType.OFFICE, "miker", "employee123", "3333");
@@ -212,6 +208,18 @@ public class DataInitializer implements CommandLineRunner {
                     userRepository.delete(userToDelete);
                 }
             }
+        }
+    }
+
+    private void cleanDefaultDistributors() {
+        log.info("Checking for default/unnecessary distributor accounts to remove...");
+        String[] defaultUsernames = {"distributor", "distributor_morning", "distributor_evening", "canteen_staff_1", "canteen_staff_2"};
+        for (String username : defaultUsernames) {
+            userRepository.findByUsername(username).ifPresent(user -> {
+                log.info("Deleting default distributor account: {}", username);
+                redemptionRepository.deleteByDistributorId(user.getId());
+                userRepository.delete(user);
+            });
         }
     }
 }

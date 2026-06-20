@@ -60,14 +60,14 @@ public class SecurityConfig {
                         // Redemption history — employees see their own
                         .requestMatchers("/api/redemptions/my-history").hasRole("EMPLOYEE")
 
+                        // Employee search — both admin and distributor (for forgot-ID)
+                        .requestMatchers("/api/employees/search").hasAnyRole("ADMIN", "DISTRIBUTOR")
+
                         // Admin endpoints
                         .requestMatchers("/api/employees/**").hasRole("ADMIN")
                         .requestMatchers("/api/users/**").hasRole("ADMIN")
                         .requestMatchers("/api/dashboard/**").hasRole("ADMIN")
                         .requestMatchers("/api/redemptions/history").hasRole("ADMIN")
-
-                        // Employee search — both admin and distributor (for forgot-ID)
-                        .requestMatchers("/api/employees/search").hasAnyRole("ADMIN", "DISTRIBUTOR")
 
                         // Auth endpoints for authenticated users
                         .requestMatchers("/api/auth/**").authenticated()

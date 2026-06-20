@@ -9,7 +9,7 @@ import { Input } from '../../components/Input';
 import { Badge } from '../../components/Badge';
 import type { ScanResult, Employee } from '../../types';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 type View = 'session-select' | 'scanner' | 'verification' | 'success' | 'error' | 'forgot-id';
 
@@ -17,8 +17,12 @@ export function DistributorPortal() {
   const { logout } = useAuth();
   const { showToast } = useToast();
 
-  const [view, setView] = useState<View>('session-select');
-  const [session, setSession] = useState<string>('');
+  const [session, setSession] = useState<string>(() => {
+    return localStorage.getItem('distributor_session') || '';
+  });
+  const [view, setView] = useState<View>(() => {
+    return localStorage.getItem('distributor_session') ? 'scanner' : 'session-select';
+  });
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -54,12 +58,14 @@ export function DistributorPortal() {
       await scanner.start(
         { facingMode: 'environment' },
         {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
+          fps: 15, // Faster frame rate for more responsive scanning on mobile
+          qrbox: (width, height) => {
+            const size = Math.min(width, height) * 0.7; // Responsive square (70% of viewport size)
+            return { width: size, height: size };
+          },
           aspectRatio: 1.0,
         },
         async (decodedText) => {
-          // Stop scanner immediately after a successful scan
           await stopScanner();
           handleQrScan(decodedText);
         },
@@ -71,8 +77,16 @@ export function DistributorPortal() {
   }, [session, stopScanner, showToast]);
 
   useEffect(() => {
-    return () => { stopScanner(); };
-  }, [stopScanner]);
+    if (view === 'scanner') {
+      const timer = setTimeout(() => startScanner(), 300);
+      return () => {
+        clearTimeout(timer);
+        stopScanner();
+      };
+    } else {
+      stopScanner();
+    }
+  }, [view, startScanner, stopScanner]);
 
   const handleQrScan = async (qrToken: string) => {
     try {
@@ -138,14 +152,12 @@ export function DistributorPortal() {
     setSearchQuery('');
     setSearchResults([]);
     setView('scanner');
-    // Delay scanner start to allow DOM to render
-    setTimeout(() => startScanner(), 300);
   };
 
   const selectSession = (s: string) => {
     setSession(s);
+    localStorage.setItem('distributor_session', s);
     setView('scanner');
-    setTimeout(() => startScanner(), 300);
   };
 
   return (
@@ -168,8 +180,17 @@ export function DistributorPortal() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <img src="/logo.png" alt="UltraTech" style={{ height: '36px', borderRadius: '4px' }} />
-          <div style={{ borderLeft: '1px solid rgba(255,255,255,0.15)', paddingLeft: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <h1 style={{ fontSize: '15px', fontWeight: 800, color: '#f5f5f4', letterSpacing: '-0.01em' }}>Distributor Portal</h1>
+          <div style={{
+            borderLeft: '1px solid rgba(255,255,255,0.15)',
+            paddingLeft: '12px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            gap: '4px'
+          }}>
+            <h1 style={{ fontSize: '14px', fontWeight: 800, color: '#f5f5f4', letterSpacing: '-0.01em', lineHeight: '1.2' }}>
+              Distributor Portal
+            </h1>
             {session && (
               <Badge variant={session === 'MORNING' ? 'warning' : 'info'}>
                 {session === 'MORNING' ? '☀️ Morning' : '🌙 Evening'}
@@ -180,7 +201,7 @@ export function DistributorPortal() {
         <div style={{ display: 'flex', gap: '8px' }}>
           {session && view !== 'session-select' && (
             <button
-              onClick={() => { stopScanner(); setSession(''); setView('session-select'); }}
+              onClick={() => { localStorage.removeItem('distributor_session'); setSession(''); setView('session-select'); }}
               style={{
                 background: 'rgba(255, 206, 0, 0.1)',
                 border: '1px solid rgba(255, 206, 0, 0.25)',
@@ -196,7 +217,7 @@ export function DistributorPortal() {
             </button>
           )}
           <button
-            onClick={() => { stopScanner(); logout(); }}
+            onClick={() => { localStorage.removeItem('distributor_session'); logout(); }}
             style={{
               background: 'rgba(239, 68, 68, 0.1)',
               border: '1px solid rgba(239, 68, 68, 0.2)',
@@ -281,7 +302,7 @@ export function DistributorPortal() {
               variant="ghost"
               fullWidth
               style={{ marginTop: '16px' }}
-              onClick={() => { stopScanner(); setView('forgot-id'); }}
+              onClick={() => setView('forgot-id')}
             >
               🔑 Employee Forgot ID?
             </Button>
