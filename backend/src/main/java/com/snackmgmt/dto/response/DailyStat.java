@@ -14,4 +14,5 @@ public class DailyStat {
     private String day;
     private long morning;
     private long evening;
+    private long night;
 }

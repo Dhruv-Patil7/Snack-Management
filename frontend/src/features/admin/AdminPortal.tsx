@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../auth/AuthContext';
 import { useToast } from '../../components/Toast';
-import { dashboardApi, employeeApi, userApi } from '../../api';
+import { dashboardApi, employeeApi, userApi, menuApi } from '../../api';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { Modal } from '../../components/Modal';
@@ -47,6 +47,14 @@ export function AdminPortal() {
   // Dashboard
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [dashLoading, setDashLoading] = useState(true);
+
+  // Daily Menu
+  const [morningSnack, setMorningSnack] = useState('');
+  const [eveningSnack, setEveningSnack] = useState('');
+  const [nightSnack, setNightSnack] = useState('');
+  const [allowedSnacks, setAllowedSnacks] = useState<string[]>([]);
+  const [menuLoading, setMenuLoading] = useState(false);
+  const [savingMenu, setSavingMenu] = useState(false);
 
   // Employees (Directory)
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -119,6 +127,37 @@ export function AdminPortal() {
     } catch { showToast('Failed to load dashboard', 'error'); }
     finally { setDashLoading(false); }
   }, [showToast]);
+
+  const fetchMenu = useCallback(async () => {
+    setMenuLoading(true);
+    try {
+      const res = await menuApi.getToday();
+      setMorningSnack(res.data.morningSnack || '');
+      setEveningSnack(res.data.eveningSnack || '');
+      setNightSnack(res.data.nightSnack || '');
+      setAllowedSnacks(res.data.allowedSnacks || []);
+    } catch { showToast('Failed to load daily menu options', 'error'); }
+    finally { setMenuLoading(false); }
+  }, [showToast]);
+
+  const handleSaveMenu = async (session: 'MORNING' | 'EVENING' | 'NIGHT', snack: string) => {
+    setSavingMenu(true);
+    try {
+      const res = await menuApi.setToday(session, snack);
+      if (session === 'MORNING') {
+        setMorningSnack(res.data.snackName);
+      } else if (session === 'EVENING') {
+        setEveningSnack(res.data.snackName);
+      } else {
+        setNightSnack(res.data.snackName);
+      }
+      showToast(`Today's ${session === 'MORNING' ? 'Morning' : session === 'EVENING' ? 'Evening' : 'Night'} snack menu set to ${res.data.snackName || 'None'}`, 'success');
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Failed to update daily menu', 'error');
+    } finally {
+      setSavingMenu(false);
+    }
+  };
 
   // Employees
   const fetchEmployees = useCallback(async (page = 0) => {
@@ -237,7 +276,10 @@ export function AdminPortal() {
   };
 
   useEffect(() => {
-    if (activeTab === 'dashboard') fetchDashboard();
+    if (activeTab === 'dashboard') {
+      fetchDashboard();
+      fetchMenu();
+    }
     if (activeTab === 'directory') {
       fetchEmployees(0);
       fetchUsers();
@@ -248,7 +290,7 @@ export function AdminPortal() {
     if (activeTab === 'history') {
       fetchHistoryEmployees(0);
     }
-  }, [activeTab]);
+  }, [activeTab, fetchDashboard, fetchMenu]);
 
   const handleCreateEmployee = async () => {
     try {
@@ -363,8 +405,8 @@ export function AdminPortal() {
 
   const tabs: { key: Tab; label: string; icon: string }[] = [
     { key: 'dashboard', label: 'Dashboard', icon: '📊' },
-    { key: 'directory', label: 'Directory', icon: '👥' },
-    { key: 'system-accounts', label: 'System Accounts', icon: '🔑' },
+    { key: 'directory', label: 'User Master', icon: '👥' },
+    { key: 'system-accounts', label: 'Admin Master', icon: '🔑' },
     { key: 'history', label: 'History', icon: '📋' },
   ];
 
@@ -470,13 +512,141 @@ export function AdminPortal() {
             <h2 style={{ fontSize: '24px', fontWeight: 700, color: '#f1f5f9', marginBottom: '24px' }}>Dashboard</h2>
             {dashLoading ? <Spinner /> : dashboard && (
               <>
+                {/* Daily Snack Menu Manager Card */}
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(255, 206, 0, 0.08) 0%, rgba(255, 206, 0, 0.02) 100%)',
+                  border: '1px solid rgba(255, 206, 0, 0.15)',
+                  borderRadius: '14px',
+                  padding: '24px',
+                  marginBottom: '28px',
+                }}>
+                  <div style={{ display: 'flex', gap: '16px', alignItems: 'center', marginBottom: '20px' }}>
+                    <div style={{
+                      fontSize: '32px',
+                      background: 'rgba(255, 206, 0, 0.15)',
+                      padding: '12px',
+                      borderRadius: '12px',
+                      lineHeight: 1
+                    }}>
+                      🍔
+                    </div>
+                    <div>
+                      <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#f1f5f9', marginBottom: '4px' }}>Daily Snack Menu</h3>
+                      <p style={{ fontSize: '13px', color: '#94a3b8' }}>
+                        Configure available snacks for each session.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
+                    {/* Morning Session */}
+                    <div style={{ background: 'rgba(21, 21, 19, 0.4)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                      <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#fcd34d', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        ☀️ Morning Session Snack
+                      </h4>
+                      <select
+                        value={morningSnack}
+                        onChange={(e) => handleSaveMenu('MORNING', e.target.value)}
+                        disabled={savingMenu || menuLoading}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          background: 'rgba(21, 21, 19, 0.8)',
+                          border: '1px solid rgba(251, 191, 36, 0.3)',
+                          borderRadius: '8px',
+                          color: '#f1f5f9',
+                          fontSize: '14px',
+                          fontWeight: 600,
+                          outline: 'none',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <option value="">-- Select Snack --</option>
+                        {allowedSnacks.map((snack) => (
+                          <option key={snack} value={snack}>{snack}</option>
+                        ))}
+                      </select>
+                      <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '10px' }}>
+                        Currently set: {morningSnack ? <strong style={{ color: '#fcd34d' }}>{morningSnack}</strong> : <span style={{ color: '#f87171' }}>Not Set</span>}
+                      </p>
+                    </div>
+
+                    {/* Evening Session */}
+                    <div style={{ background: 'rgba(21, 21, 19, 0.4)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                      <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#60a5fa', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        🌙 Evening Session Snack
+                      </h4>
+                      <select
+                        value={eveningSnack}
+                        onChange={(e) => handleSaveMenu('EVENING', e.target.value)}
+                        disabled={savingMenu || menuLoading}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          background: 'rgba(21, 21, 19, 0.8)',
+                          border: '1px solid rgba(96, 165, 250, 0.3)',
+                          borderRadius: '8px',
+                          color: '#f1f5f9',
+                          fontSize: '14px',
+                          fontWeight: 600,
+                          outline: 'none',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <option value="">-- Select Snack --</option>
+                        {allowedSnacks.map((snack) => (
+                          <option key={snack} value={snack}>{snack}</option>
+                        ))}
+                      </select>
+                      <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '10px' }}>
+                        Currently set: {eveningSnack ? <strong style={{ color: '#60a5fa' }}>{eveningSnack}</strong> : <span style={{ color: '#f87171' }}>Not Set</span>}
+                      </p>
+                    </div>
+
+                    {/* Night Session */}
+                    <div style={{ background: 'rgba(21, 21, 19, 0.4)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                      <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#a78bfa', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        🌃 Night Session Snack
+                      </h4>
+                      <select
+                        value={nightSnack}
+                        onChange={(e) => handleSaveMenu('NIGHT', e.target.value)}
+                        disabled={savingMenu || menuLoading}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          background: 'rgba(21, 21, 19, 0.8)',
+                          border: '1px solid rgba(167, 139, 250, 0.3)',
+                          borderRadius: '8px',
+                          color: '#f1f5f9',
+                          fontSize: '14px',
+                          fontWeight: 600,
+                          outline: 'none',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <option value="">-- Select Snack --</option>
+                        {allowedSnacks.map((snack) => (
+                          <option key={snack} value={snack}>{snack}</option>
+                        ))}
+                      </select>
+                      <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '10px' }}>
+                        Currently set: {nightSnack ? <strong style={{ color: '#a78bfa' }}>{nightSnack}</strong> : <span style={{ color: '#f87171' }}>Not Set</span>}
+                      </p>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '16px', textAlign: 'right' }}>
+                    ☕ Tea & Coffee are always available as beverages.
+                  </div>
+                </div>
                 {/* ── Stat Cards ── */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '28px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '28px' }}>
                   {[
                     { label: '☀️ Morning Today', value: dashboard.morningCount, color: '#fbbf24', gradient: 'linear-gradient(135deg, rgba(251,191,36,0.15) 0%, rgba(251,191,36,0.04) 100%)' },
                     { label: '🌙 Evening Today', value: dashboard.eveningCount, color: '#60a5fa', gradient: 'linear-gradient(135deg, rgba(96,165,250,0.15) 0%, rgba(96,165,250,0.04) 100%)' },
+                    { label: '🌃 Night Today', value: (dashboard as any).nightCount || 0, color: '#a78bfa', gradient: 'linear-gradient(135deg, rgba(167,139,250,0.15) 0%, rgba(167,139,250,0.04) 100%)' },
                     { label: '📅 This Month', value: dashboard.monthlyTotal, color: '#ffce00', gradient: 'linear-gradient(135deg, rgba(255,206,0,0.15) 0%, rgba(255,206,0,0.04) 100%)' },
-                    { label: '👥 Active Employees', value: dashboard.totalActiveEmployees, color: '#a78bfa', gradient: 'linear-gradient(135deg, rgba(167,139,250,0.15) 0%, rgba(167,139,250,0.04) 100%)' },
+                    { label: '👥 Active Employees', value: dashboard.totalActiveEmployees, color: '#34d399', gradient: 'linear-gradient(135deg, rgba(52,211,153,0.15) 0%, rgba(52,211,153,0.04) 100%)' },
                   ].map((c, i) => (
                     <div key={i} style={{
                       background: c.gradient,
@@ -510,11 +680,12 @@ export function AdminPortal() {
 
                     {(() => {
                       const stats = dashboard.weeklyStats || [];
-                      const maxVal = Math.max(...stats.map(s => Math.max(s.morning, s.evening)), 1);
+                      const maxVal = Math.max(...stats.map(s => Math.max(s.morning, s.evening, (s as any).night || 0)), 1);
                       const chartH = 220;
-                      const barW = 22;
-                      const groupGap = 36;
-                      const chartW = stats.length * (barW * 2 + 8 + groupGap);
+                      const barW = 16;
+                      const groupGap = 32;
+                      const groupWidth = barW * 3 + 8;
+                      const chartW = stats.length * (groupWidth + groupGap);
                       const yTicks = 5;
 
                       return (
@@ -526,6 +697,9 @@ export function AdminPortal() {
                             </span>
                             <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94a3b8' }}>
                               <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#60a5fa', display: 'inline-block' }} /> Evening
+                            </span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94a3b8' }}>
+                              <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#a78bfa', display: 'inline-block' }} /> Night
                             </span>
                           </div>
 
@@ -544,16 +718,18 @@ export function AdminPortal() {
 
                             {/* Bars */}
                             {stats.map((s, i) => {
-                              const xBase = 46 + i * (barW * 2 + 8 + groupGap);
+                              const xBase = 46 + i * (groupWidth + groupGap);
                               const mH = (s.morning / maxVal) * chartH;
                               const eH = (s.evening / maxVal) * chartH;
+                              const nH = (((s as any).night || 0) / maxVal) * chartH;
                               const mY = chartH - mH + 10;
                               const eY = chartH - eH + 10;
+                              const nY = chartH - nH + 10;
 
                               return (
                                 <g key={i}>
                                   {/* Morning bar */}
-                                  <rect x={xBase} y={mY} width={barW} height={mH} rx="4"
+                                  <rect x={xBase} y={mY} width={barW} height={mH} rx="3"
                                     fill="url(#morningGrad)"
                                     style={{ transition: 'all 400ms ease', cursor: 'pointer' }}
                                     onMouseEnter={(e) => { (e.target as SVGRectElement).style.filter = 'brightness(1.3)'; }}
@@ -563,11 +739,11 @@ export function AdminPortal() {
                                   </rect>
                                   {/* Morning count label */}
                                   {s.morning > 0 && (
-                                    <text x={xBase + barW / 2} y={mY - 5} fill="#fbbf24" fontSize="10" fontWeight="700" textAnchor="middle">{s.morning}</text>
+                                    <text x={xBase + barW / 2} y={mY - 5} fill="#fbbf24" fontSize="9" fontWeight="700" textAnchor="middle">{s.morning}</text>
                                   )}
 
                                   {/* Evening bar */}
-                                  <rect x={xBase + barW + 4} y={eY} width={barW} height={eH} rx="4"
+                                  <rect x={xBase + barW + 4} y={eY} width={barW} height={eH} rx="3"
                                     fill="url(#eveningGrad)"
                                     style={{ transition: 'all 400ms ease', cursor: 'pointer' }}
                                     onMouseEnter={(e) => { (e.target as SVGRectElement).style.filter = 'brightness(1.3)'; }}
@@ -577,12 +753,26 @@ export function AdminPortal() {
                                   </rect>
                                   {/* Evening count label */}
                                   {s.evening > 0 && (
-                                    <text x={xBase + barW + 4 + barW / 2} y={eY - 5} fill="#60a5fa" fontSize="10" fontWeight="700" textAnchor="middle">{s.evening}</text>
+                                    <text x={xBase + barW + 4 + barW / 2} y={eY - 5} fill="#60a5fa" fontSize="9" fontWeight="700" textAnchor="middle">{s.evening}</text>
+                                  )}
+
+                                  {/* Night bar */}
+                                  <rect x={xBase + barW * 2 + 8} y={nY} width={barW} height={nH} rx="3"
+                                    fill="url(#nightGrad)"
+                                    style={{ transition: 'all 400ms ease', cursor: 'pointer' }}
+                                    onMouseEnter={(e) => { (e.target as SVGRectElement).style.filter = 'brightness(1.3)'; }}
+                                    onMouseLeave={(e) => { (e.target as SVGRectElement).style.filter = 'none'; }}
+                                  >
+                                    <title>{s.day} {s.date} — Night: {(s as any).night || 0}</title>
+                                  </rect>
+                                  {/* Night count label */}
+                                  {((s as any).night || 0) > 0 && (
+                                    <text x={xBase + barW * 2 + 8 + barW / 2} y={nY - 5} fill="#a78bfa" fontSize="9" fontWeight="700" textAnchor="middle">{(s as any).night}</text>
                                   )}
 
                                   {/* Day label */}
-                                  <text x={xBase + barW + 2} y={chartH + 26} fill="#94a3b8" fontSize="11" textAnchor="middle" fontWeight="600">{s.day}</text>
-                                  <text x={xBase + barW + 2} y={chartH + 40} fill="#64748b" fontSize="9" textAnchor="middle">{s.date}</text>
+                                  <text x={xBase + groupWidth / 2} y={chartH + 26} fill="#94a3b8" fontSize="11" textAnchor="middle" fontWeight="600">{s.day}</text>
+                                  <text x={xBase + groupWidth / 2} y={chartH + 40} fill="#64748b" fontSize="9" textAnchor="middle">{s.date}</text>
                                 </g>
                               );
                             })}
@@ -596,6 +786,10 @@ export function AdminPortal() {
                               <linearGradient id="eveningGrad" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="0%" stopColor="#60a5fa" />
                                 <stop offset="100%" stopColor="#3b82f6" />
+                              </linearGradient>
+                              <linearGradient id="nightGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#a78bfa" />
+                                <stop offset="100%" stopColor="#8b5cf6" />
                               </linearGradient>
                             </defs>
                           </svg>
@@ -684,10 +878,11 @@ export function AdminPortal() {
                   <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>
                     Percentage of active employees who redeemed snacks today
                   </p>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
                     {[
                       { label: 'Morning Shift', count: dashboard.morningCount, color: '#fbbf24', icon: '☀️' },
                       { label: 'Evening Shift', count: dashboard.eveningCount, color: '#60a5fa', icon: '🌙' },
+                      { label: 'Night Shift', count: (dashboard as any).nightCount || 0, color: '#a78bfa', icon: '🌃' },
                     ].map((shift) => {
                       const pct = dashboard.totalActiveEmployees > 0 ? Math.round((shift.count / dashboard.totalActiveEmployees) * 100) : 0;
                       const circumference = 2 * Math.PI * 40;
@@ -728,7 +923,7 @@ export function AdminPortal() {
         {activeTab === 'directory' && (
           <div className="animate-fade-in">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <h2 style={{ fontSize: '24px', fontWeight: 700, color: '#f1f5f9' }}>Directory & Accounts</h2>
+              <h2 style={{ fontSize: '24px', fontWeight: 700, color: '#f1f5f9' }}>User Master</h2>
               <Button onClick={() => setShowCreateEmp(true)}>+ Add Employee</Button>
             </div>
             <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '24px', lineHeight: '1.5' }}>
@@ -927,7 +1122,7 @@ export function AdminPortal() {
         {activeTab === 'system-accounts' && (
           <div className="animate-fade-in">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <h2 style={{ fontSize: '24px', fontWeight: 700, color: '#f1f5f9' }}>System Accounts</h2>
+              <h2 style={{ fontSize: '24px', fontWeight: 700, color: '#f1f5f9' }}>Admin Master</h2>
               <Button onClick={() => setShowCreateSystemUser(true)}>+ Add System User</Button>
             </div>
             <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '24px', lineHeight: '1.5' }}>
@@ -1120,16 +1315,264 @@ export function AdminPortal() {
                                       <Spinner />
                                     </div>
                                   ) : summary ? (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                      {/* Total consumption badge */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                      {/* Total consumption badge & Header */}
                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '14px', color: '#e2e8f0', fontWeight: 600 }}>Snack Log Summary</span>
+                                        <span style={{ fontSize: '15px', color: '#e2e8f0', fontWeight: 700 }}>
+                                          📊 Consumption Analytics & Statistics
+                                        </span>
                                         <Badge variant="warning">
                                           Consumed {summary.monthlyCount} Snacks This Month
                                         </Badge>
                                       </div>
 
-                                      {/* Logs subtable */}
+                                      {(() => {
+                                        const history = summary.history || [];
+                                        const total = history.length;
+                                        
+                                        const snackCounts: Record<string, number> = {};
+                                        const weekdayCounts: Record<string, number> = {
+                                          'Monday': 0,
+                                          'Tuesday': 0,
+                                          'Wednesday': 0,
+                                          'Thursday': 0,
+                                          'Friday': 0,
+                                          'Saturday': 0,
+                                          'Sunday': 0
+                                        };
+                                        
+                                        const dayMap = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                                        
+                                        history.forEach(log => {
+                                          const item = log.snackItem || 'Beverage/Other';
+                                          snackCounts[item] = (snackCounts[item] || 0) + 1;
+                                          
+                                          if (log.redeemedAt) {
+                                            const dateStr = log.redeemedAt.split(' ')[0];
+                                            const date = new Date(dateStr);
+                                            if (!isNaN(date.getTime())) {
+                                              const dayName = dayMap[date.getDay()];
+                                              weekdayCounts[dayName] = (weekdayCounts[dayName] || 0) + 1;
+                                            }
+                                          }
+                                        });
+
+                                        let favoriteSnack = 'None';
+                                        let favoriteSnackCount = 0;
+                                        Object.entries(snackCounts).forEach(([snack, count]) => {
+                                          if (count > favoriteSnackCount) {
+                                            favoriteSnack = snack;
+                                            favoriteSnackCount = count;
+                                          }
+                                        });
+
+                                        const workdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+                                        let mostSkippedDay = 'None';
+                                        let minCount = Infinity;
+                                        let hasAnyHistory = false;
+                                        
+                                        workdays.forEach(day => {
+                                          const count = weekdayCounts[day];
+                                          if (count > 0) hasAnyHistory = true;
+                                          if (count < minCount) {
+                                            minCount = count;
+                                            mostSkippedDay = day;
+                                          }
+                                        });
+
+                                        if (!hasAnyHistory) {
+                                          mostSkippedDay = 'No Data';
+                                        } else if (minCount === 0) {
+                                          mostSkippedDay = `${mostSkippedDay} (Never Visited)`;
+                                        } else {
+                                          mostSkippedDay = `${mostSkippedDay} (${minCount} time${minCount > 1 ? 's' : ''})`;
+                                        }
+
+                                        return (
+                                          <>
+                                            {/* KPI Stats Row */}
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+                                              {[
+                                                { label: 'Total Consumed', value: total, color: '#ffce00', bg: 'rgba(255, 206, 0, 0.08)', border: 'rgba(255, 206, 0, 0.15)' },
+                                                { label: 'Consumed This Month', value: summary.monthlyCount, color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.08)', border: 'rgba(56, 189, 248, 0.15)' },
+                                                { label: 'Favorite Snack', value: favoriteSnackCount > 0 ? `${favoriteSnack} (${favoriteSnackCount})` : 'None', color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.08)', border: 'rgba(167, 139, 250, 0.15)' },
+                                                { label: 'Most Skipped Day', value: mostSkippedDay, color: '#f87171', bg: 'rgba(248, 113, 113, 0.08)', border: 'rgba(248, 113, 113, 0.15)' },
+                                              ].map((card, i) => (
+                                                <div key={i} style={{
+                                                  background: card.bg,
+                                                  border: `1px solid ${card.border}`,
+                                                  borderRadius: '12px',
+                                                  padding: '12px 16px',
+                                                }}>
+                                                  <p style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: '4px', marginTop: 0 }}>
+                                                    {card.label}
+                                                  </p>
+                                                  <p style={{ color: card.color, fontSize: '16px', fontWeight: 800, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={String(card.value)}>
+                                                    {card.value}
+                                                  </p>
+                                                </div>
+                                              ))}
+                                            </div>
+
+                                            {total > 0 && (
+                                              /* Visual Charts Row */
+                                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                                {/* Chart 1: Snack Popularity */}
+                                                <div style={{
+                                                  background: 'rgba(21, 21, 19, 0.4)',
+                                                  border: '1px solid rgba(255,255,255,0.06)',
+                                                  borderRadius: '12px',
+                                                  padding: '16px',
+                                                }}>
+                                                  <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#f1f5f9', marginBottom: '16px', marginTop: 0 }}>
+                                                    🍩 Snack Consumption Frequencies
+                                                  </h4>
+                                                  {(() => {
+                                                    const topSnacks = Object.entries(snackCounts)
+                                                      .sort((a, b) => b[1] - a[1])
+                                                      .slice(0, 4);
+                                                    const maxSnackCount = Math.max(...topSnacks.map(s => s[1]), 1);
+
+                                                    return (
+                                                      <svg width="100%" viewBox="0 0 340 160" style={{ overflow: 'visible' }}>
+                                                        <defs>
+                                                          <linearGradient id="snackGrad" x1="0" y1="0" x2="1" y2="0">
+                                                            <stop offset="0%" stopColor="#a78bfa" />
+                                                            <stop offset="100%" stopColor="#8b5cf6" />
+                                                          </linearGradient>
+                                                        </defs>
+                                                        {topSnacks.map(([snack, count], idx) => {
+                                                          const y = 15 + idx * 36;
+                                                          const barWidth = (count / maxSnackCount) * 200;
+                                                          return (
+                                                            <g key={snack}>
+                                                              <text x="75" y={y + 12} fill="#94a3b8" fontSize="11" fontWeight="600" textAnchor="end">
+                                                                {snack.length > 10 ? `${snack.substring(0, 9)}...` : snack}
+                                                              </text>
+                                                              <rect x="85" y={y} width="200" height="16" rx="4" fill="rgba(255,255,255,0.03)" />
+                                                              <rect x="85" y={y} width={barWidth} height="16" rx="4" fill="url(#snackGrad)" style={{ transition: 'width 800ms ease' }}>
+                                                                <title>{snack}: {count} times</title>
+                                                              </rect>
+                                                              <text x={85 + barWidth + 8} y={y + 12} fill="#ffce00" fontSize="11" fontWeight="700">
+                                                                {count}
+                                                              </text>
+                                                            </g>
+                                                          );
+                                                        })}
+                                                      </svg>
+                                                    );
+                                                  })()}
+                                                </div>
+
+                                                {/* Chart 2: Weekday Activity */}
+                                                <div style={{
+                                                  background: 'rgba(21, 21, 19, 0.4)',
+                                                  border: '1px solid rgba(255,255,255,0.06)',
+                                                  borderRadius: '12px',
+                                                  padding: '16px',
+                                                }}>
+                                                  <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#f1f5f9', marginBottom: '16px', marginTop: 0 }}>
+                                                    📅 Day-wise Consumption & Skip Highlights
+                                                  </h4>
+                                                  {(() => {
+                                                    const shortDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                                                    const fullDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                                                    const maxWeekdayCount = Math.max(...Object.values(weekdayCounts), 1);
+                                                    const chartHeight = 100;
+
+                                                      return (
+                                                        <svg width="100%" viewBox="0 0 340 160" style={{ overflow: 'visible' }}>
+                                                          <defs>
+                                                            <linearGradient id="weekdayGrad" x1="0" y1="0" x2="0" y2="1">
+                                                              <stop offset="0%" stopColor="#34d399" />
+                                                              <stop offset="100%" stopColor="#059669" />
+                                                            </linearGradient>
+                                                          </defs>
+                                                          {[0, 0.5, 1].map((ratio, idx) => {
+                                                            const y = 15 + chartHeight - ratio * chartHeight;
+                                                            const val = Math.round(ratio * maxWeekdayCount);
+                                                            return (
+                                                              <g key={idx}>
+                                                                <line x1="25" y1={y} x2="330" y2={y} stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
+                                                                <text x="20" y={y + 3} fill="#64748b" fontSize="9" textAnchor="end">{val}</text>
+                                                              </g>
+                                                            );
+                                                          })}
+                                                          {fullDays.map((day, idx) => {
+                                                            const count = weekdayCounts[day] || 0;
+                                                            const barHeight = (count / maxWeekdayCount) * chartHeight;
+                                                            const x = 32 + idx * 42;
+                                                            const y = 15 + chartHeight - barHeight;
+                                                            const isSkipped = count === 0 && day !== 'Saturday' && day !== 'Sunday';
+                                                            return (
+                                                              <g key={day}>
+                                                                {count === 0 ? (
+                                                                  <rect
+                                                                    x={x}
+                                                                    y={15}
+                                                                    width="28"
+                                                                    height={chartHeight}
+                                                                    rx="4"
+                                                                    fill={isSkipped ? "rgba(239, 68, 68, 0.05)" : "rgba(255,255,255,0.01)"}
+                                                                    stroke={isSkipped ? "rgba(239, 68, 68, 0.3)" : "rgba(255,255,255,0.05)"}
+                                                                    strokeDasharray="3 3"
+                                                                  >
+                                                                    <title>{day}: 0 redemptions (Skipped)</title>
+                                                                  </rect>
+                                                                ) : (
+                                                                  <rect
+                                                                    x={x}
+                                                                    y={y}
+                                                                    width="28"
+                                                                    height={barHeight}
+                                                                    rx="4"
+                                                                    fill="url(#weekdayGrad)"
+                                                                    style={{ transition: 'all 500ms ease' }}
+                                                                  >
+                                                                    <title>{day}: {count} redemptions</title>
+                                                                  </rect>
+                                                                )}
+                                                                <text
+                                                                  x={x + 14}
+                                                                  y={count === 0 ? 15 + chartHeight / 2 + 4 : y - 5}
+                                                                  fill={count === 0 ? (isSkipped ? "#ef4444" : "#64748b") : "#34d399"}
+                                                                  fontSize="9"
+                                                                  fontWeight="700"
+                                                                  textAnchor="middle"
+                                                                >
+                                                                  {count === 0 ? (isSkipped ? "Skip" : "-") : count}
+                                                                </text>
+                                                                <text
+                                                                  x={x + 14}
+                                                                  y={15 + chartHeight + 16}
+                                                                  fill={count === 0 && isSkipped ? "#f87171" : "#94a3b8"}
+                                                                  fontSize="10"
+                                                                  fontWeight={count === 0 && isSkipped ? "700" : "600"}
+                                                                  textAnchor="middle"
+                                                                >
+                                                                  {shortDays[idx]}
+                                                                </text>
+                                                              </g>
+                                                            );
+                                                          })}
+                                                        </svg>
+                                                      );
+                                                    })()}
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </>
+                                          );
+                                        })()}
+
+                                        {/* Detailed Redemption Logs Section */}
+                                        <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '16px', marginTop: '8px' }}>
+                                          <p style={{ fontSize: '13px', color: '#e2e8f0', fontWeight: 600, marginBottom: '12px', marginTop: 0 }}>
+                                            📋 Detailed Redemption Logs
+                                          </p>
+                                        </div>
+
+                                        {/* Logs subtable */}
                                       {summary.history.length === 0 ? (
                                         <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '12px' }}>
                                           No snacks consumed yet.
@@ -1139,7 +1582,7 @@ export function AdminPortal() {
                                           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                             <thead>
                                               <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                                                {['Date & Time', 'Session', 'Redemption Mode', 'Scanned By'].map((th) => (
+                                                {['Date & Time', 'Session', 'Redeemed Item', 'Redemption Mode', 'Scanned By'].map((th) => (
                                                   <th key={th} style={{
                                                     textAlign: 'left', padding: '6px 8px', color: '#64748b',
                                                     fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em'
@@ -1156,9 +1599,12 @@ export function AdminPortal() {
                                                       {log.session === 'MORNING' ? '☀️ Morning' : '🌙 Evening'}
                                                     </Badge>
                                                   </td>
+                                                  <td style={{ padding: '8px', color: '#e2e8f0', fontSize: '13px', fontWeight: 600 }}>
+                                                    {log.snackItem || '-'}
+                                                  </td>
                                                   <td style={{ padding: '8px' }}>
-                                                    <Badge variant={log.redemptionMode === 'DYNAMIC_QR' ? 'success' : 'neutral'}>
-                                                      {log.redemptionMode === 'DYNAMIC_QR' ? 'QR Code' : 'Manual Entry'}
+                                                    <Badge variant={log.redemptionMode === 'DYNAMIC_QR' || log.redemptionMode === 'STATIC_QR' ? 'success' : 'neutral'}>
+                                                      {log.redemptionMode === 'DYNAMIC_QR' || log.redemptionMode === 'STATIC_QR' ? 'QR Code' : 'Manual Entry'}
                                                     </Badge>
                                                   </td>
                                                   <td style={{ padding: '8px', color: '#94a3b8', fontSize: '13px' }}>{log.distributorName}</td>

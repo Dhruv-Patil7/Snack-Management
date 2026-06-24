@@ -14,4 +14,5 @@ public class LoginResponse {
     private Long userId;
     private Long employeeId;
     private String employeeName;
+    private String photoUrl;
 }

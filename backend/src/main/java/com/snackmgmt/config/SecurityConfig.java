@@ -63,6 +63,10 @@ public class SecurityConfig {
                         // Employee search — both admin and distributor (for forgot-ID)
                         .requestMatchers("/api/employees/search").hasAnyRole("ADMIN", "DISTRIBUTOR")
 
+                        // Menu endpoints
+                        .requestMatchers(HttpMethod.GET, "/api/menu/today").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/menu/today").hasRole("ADMIN")
+
                         // Admin endpoints
                         .requestMatchers("/api/employees/**").hasRole("ADMIN")
                         .requestMatchers("/api/users/**").hasRole("ADMIN")

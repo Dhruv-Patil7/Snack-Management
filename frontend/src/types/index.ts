@@ -12,6 +12,7 @@ export interface LoginResponse {
   userId: number;
   employeeId: number | null;
   employeeName: string | null;
+  photoUrl: string | null;
 }
 
 export interface Employee {
@@ -64,6 +65,7 @@ export interface Redemption {
   redeemedAt: string;
   distributorId: number;
   distributorName: string;
+  snackItem: string | null;
 }
 
 export interface DailyStat {
@@ -126,4 +128,5 @@ export type AuthUser = {
   userId: number;
   employeeId: number | null;
   employeeName: string | null;
+  photoUrl: string | null;
 };

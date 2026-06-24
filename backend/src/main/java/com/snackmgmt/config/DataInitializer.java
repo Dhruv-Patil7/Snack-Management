@@ -30,16 +30,24 @@ public class DataInitializer implements CommandLineRunner {
     private final EmployeeRepository employeeRepository;
     private final RedemptionRepository redemptionRepository;
     private final PasswordEncoder passwordEncoder;
+    private final jakarta.persistence.EntityManager entityManager;
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void run(String... args) {
         log.info("Running DataInitializer...");
 
+        // Alter session columns to standard VARCHAR(20) to remove any H2 enum constraints
+        try {
+            entityManager.createNativeQuery("ALTER TABLE redemptions ALTER COLUMN session VARCHAR(20)").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE daily_menu ALTER COLUMN session VARCHAR(20)").executeUpdate();
+            log.info("Successfully altered database session columns to VARCHAR(20).");
+        } catch (Exception e) {
+            log.info("Session columns alter query skipped or already VARCHAR: {}", e.getMessage());
+        }
+
         // Clean up duplicate user accounts pointing to the same employee
         cleanDuplicateUserAccounts();
-
-        // Clean up default/unnecessary distributor accounts that might be leftover in the database
-        cleanDefaultDistributors();
 
         // 1. Seed Admin User
         if (!userRepository.existsByUsername("admin")) {
@@ -54,16 +62,26 @@ public class DataInitializer implements CommandLineRunner {
             log.info("Seeded default admin user (admin / admin123)");
         }
 
-        // 2. Seed Employee Users
-        createEmployeeIfNotExist("EMP001", "John Doe", "Engineering", EmployeeType.OFFICE, "employee", "employee123", "1234");
-        createEmployeeIfNotExist("EMP007", "Sarah Connor", "Logistics", EmployeeType.PLANT, "sarahc", "employee123", "2222");
-        createEmployeeIfNotExist("EMP003", "Mike Ross", "Legal", EmployeeType.OFFICE, "miker", "employee123", "3333");
-        createEmployeeIfNotExist("EMP004", "David Miller", "Production", EmployeeType.PLANT, "davidm", "employee123", "4444");
-        createEmployeeIfNotExist("EMP005", "Elena Rostova", "Quality Assurance", EmployeeType.CONTRACTOR, "elenar", "employee123", "5555");
-        createEmployeeIfNotExist("EMP006", "Marcus Aurelius", "Security", EmployeeType.PLANT, "marcus", "employee123", "6666");
+        // 2. Seed Employee and Distributor Users ONLY on a fresh run (when no employees exist in DB)
+        if (employeeRepository.count() == 0) {
+            log.info("Fresh database detected. Seeding celebrity profiles...");
+            createEmployeeIfNotExist("EMP001", "Taylor Swift", "Music", EmployeeType.OFFICE, "taylors", "employee123", "1234", "taylor.jpg");
+            createEmployeeIfNotExist("EMP002", "Drake", "Music", EmployeeType.OFFICE, "drake", "employee123", "2222", "drake.jpg");
+            createEmployeeIfNotExist("EMP003", "Cristiano Ronaldo", "Sports", EmployeeType.PLANT, "ronaldo", "employee123", "3333", "ronaldo.jpg");
+            createEmployeeIfNotExist("EMP004", "Lionel Messi", "Sports", EmployeeType.PLANT, "messi", "employee123", "4444", "messi.jpg");
+            createEmployeeIfNotExist("EMP005", "Selena Gomez", "Acting & Music", EmployeeType.CONTRACTOR, "selena", "employee123", "5555", "selena.jpg");
+            createEmployeeIfNotExist("EMP006", "Justin Bieber", "Music", EmployeeType.OFFICE, "bieber", "employee123", "6666", "bieber.jpg");
 
-        // 4. Seed mock redemption data for dashboard charts
-        seedMockRedemptions();
+            // Also seed a default distributor user for testing
+            createDistributorIfNotExist("distributor", "distributor123");
+
+            // 4. Seed mock redemption data for dashboard charts
+            seedMockRedemptions();
+        } else {
+            log.info("Database already contains employees. Skipping default dummy profiles. Re-generating redemptions...");
+            redemptionRepository.deleteAll();
+            seedMockRedemptions();
+        }
     }
 
     private void createDistributorIfNotExist(String username, String password) {
@@ -80,7 +98,7 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 
-    private void createEmployeeIfNotExist(String employeeCode, String name, String department, EmployeeType employeeType, String username, String password, String pin) {
+    private void createEmployeeIfNotExist(String employeeCode, String name, String department, EmployeeType employeeType, String username, String password, String pin, String photoPath) {
         if (!userRepository.existsByUsername(username)) {
             Employee employee = employeeRepository.findByEmployeeCode(employeeCode)
                     .orElseGet(() -> {
@@ -89,6 +107,7 @@ public class DataInitializer implements CommandLineRunner {
                                 .name(name)
                                 .department(department)
                                 .employeeType(employeeType)
+                                .photoPath(photoPath)
                                 .active(true)
                                 .build();
                         return employeeRepository.save(emp);
@@ -116,9 +135,9 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void seedMockRedemptions() {
-        // Only seed if we have very few redemptions (avoid duplicating on restart)
+        // Only seed if we have no redemptions (avoid duplicating on restart)
         long existingCount = redemptionRepository.count();
-        if (existingCount > 10) {
+        if (existingCount > 0) {
             log.info("Skipping mock redemption seeding — already have {} records.", existingCount);
             return;
         }
@@ -138,6 +157,9 @@ public class DataInitializer implements CommandLineRunner {
         Random rng = new Random(42); // Deterministic for consistency
         LocalDate today = LocalDate.now();
         RedemptionMode[] modes = { RedemptionMode.DYNAMIC_QR, RedemptionMode.MANUAL, RedemptionMode.STATIC_QR };
+        String[] morningSnacks = { "Samosa", "Kachori", "Tea", "Coffee", "Samosa", "Tea" };
+        String[] eveningSnacks = { "Vada Pav", "Tea", "Coffee", "Vada Pav", "Tea" };
+        String[] nightSnacks = { "Upma", "Aloo Bonda", "Tea", "Coffee" };
 
         // Generate redemptions for the past 7 days
         for (int daysAgo = 6; daysAgo >= 0; daysAgo--) {
@@ -148,6 +170,7 @@ public class DataInitializer implements CommandLineRunner {
             boolean isWeekend = dayOfWeek >= 6;
             int morningParticipants = isWeekend ? 1 + rng.nextInt(2) : 3 + rng.nextInt(Math.min(employees.size() - 2, 4));
             int eveningParticipants = isWeekend ? 0 + rng.nextInt(2) : 2 + rng.nextInt(Math.min(employees.size() - 1, 3));
+            int nightParticipants = isWeekend ? 0 + rng.nextInt(2) : 1 + rng.nextInt(Math.min(employees.size() - 2, 3));
 
             // Morning redemptions
             for (int j = 0; j < Math.min(morningParticipants, employees.size()); j++) {
@@ -161,6 +184,7 @@ public class DataInitializer implements CommandLineRunner {
                         .distributor(dist)
                         .session(SnackSession.MORNING)
                         .redemptionMode(modes[rng.nextInt(modes.length)])
+                        .snackItem(morningSnacks[rng.nextInt(morningSnacks.length)])
                         .redeemedAt(LocalDateTime.of(date.getYear(), date.getMonthValue(), date.getDayOfMonth(), hour, minute))
                         .build();
                 redemptionRepository.save(r);
@@ -178,6 +202,25 @@ public class DataInitializer implements CommandLineRunner {
                         .distributor(dist)
                         .session(SnackSession.EVENING)
                         .redemptionMode(modes[rng.nextInt(modes.length)])
+                        .snackItem(eveningSnacks[rng.nextInt(eveningSnacks.length)])
+                        .redeemedAt(LocalDateTime.of(date.getYear(), date.getMonthValue(), date.getDayOfMonth(), hour, minute))
+                        .build();
+                redemptionRepository.save(r);
+            }
+
+            // Night redemptions
+            for (int j = 0; j < Math.min(nightParticipants, employees.size()); j++) {
+                Employee emp = employees.get((j + 2) % employees.size());
+                User dist = distributors.get(rng.nextInt(distributors.size()));
+                int hour = 21 + rng.nextInt(2); // 9-10 PM
+                int minute = rng.nextInt(55);
+
+                Redemption r = Redemption.builder()
+                        .employee(emp)
+                        .distributor(dist)
+                        .session(SnackSession.NIGHT)
+                        .redemptionMode(modes[rng.nextInt(modes.length)])
+                        .snackItem(nightSnacks[rng.nextInt(nightSnacks.length)])
                         .redeemedAt(LocalDateTime.of(date.getYear(), date.getMonthValue(), date.getDayOfMonth(), hour, minute))
                         .build();
                 redemptionRepository.save(r);
@@ -211,16 +254,6 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 
-    private void cleanDefaultDistributors() {
-        log.info("Checking for default/unnecessary distributor accounts to remove...");
-        String[] defaultUsernames = {"distributor", "distributor_morning", "distributor_evening", "canteen_staff_1", "canteen_staff_2"};
-        for (String username : defaultUsernames) {
-            userRepository.findByUsername(username).ifPresent(user -> {
-                log.info("Deleting default distributor account: {}", username);
-                redemptionRepository.deleteByDistributorId(user.getId());
-                userRepository.delete(user);
-            });
-        }
-    }
+
 }
 

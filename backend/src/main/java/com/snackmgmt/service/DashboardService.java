@@ -34,6 +34,7 @@ public class DashboardService {
 
         long morningCount = redemptionRepository.countBySessionAndDate(SnackSession.MORNING, today);
         long eveningCount = redemptionRepository.countBySessionAndDate(SnackSession.EVENING, today);
+        long nightCount = redemptionRepository.countBySessionAndDate(SnackSession.NIGHT, today);
 
         LocalDateTime monthStart = currentMonth.atDay(1).atStartOfDay();
         LocalDateTime monthEnd = currentMonth.plusMonths(1).atDay(1).atStartOfDay();
@@ -50,6 +51,7 @@ public class DashboardService {
         return DashboardResponse.builder()
                 .morningCount(morningCount)
                 .eveningCount(eveningCount)
+                .nightCount(nightCount)
                 .monthlyTotal(monthlyTotal)
                 .totalActiveEmployees(totalEmployees)
                 .weeklyStats(weeklyStats)
@@ -64,7 +66,7 @@ public class DashboardService {
 
         List<Object[]> rawStats = redemptionRepository.findWeeklyStatsRaw(startDt, endDt);
 
-        // Build a map: date -> { MORNING: count, EVENING: count }
+        // Build a map: date -> { MORNING: count, EVENING: count, NIGHT: count }
         Map<LocalDate, Map<SnackSession, Long>> statsMap = new LinkedHashMap<>();
         for (Object[] row : rawStats) {
             LocalDate date = (LocalDate) row[0];
@@ -84,6 +86,7 @@ public class DashboardService {
                     .day(date.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.ENGLISH))
                     .morning(dayCounts.getOrDefault(SnackSession.MORNING, 0L))
                     .evening(dayCounts.getOrDefault(SnackSession.EVENING, 0L))
+                    .night(dayCounts.getOrDefault(SnackSession.NIGHT, 0L))
                     .build());
         }
         return result;
@@ -113,6 +116,7 @@ public class DashboardService {
                         .redeemedAt(r.getRedeemedAt().format(DATETIME_FORMATTER))
                         .distributorId(r.getDistributor().getId())
                         .distributorName(r.getDistributor().getUsername())
+                        .snackItem(r.getSnackItem())
                         .build())
                 .collect(Collectors.toList());
     }

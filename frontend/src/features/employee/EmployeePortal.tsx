@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { QRCode } from 'react-qr-code';
 import { useAuth } from '../../auth/AuthContext';
 import { useToast } from '../../components/Toast';
-import { qrApi, redemptionApi } from '../../api';
+import { qrApi, redemptionApi, menuApi } from '../../api';
 import { Card } from '../../components/Card';
 import { Spinner } from '../../components/Spinner';
 import { Badge } from '../../components/Badge';
@@ -10,17 +10,19 @@ import { Modal } from '../../components/Modal';
 import { Button } from '../../components/Button';
 import type { Redemption } from '../../types';
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 export function EmployeePortal() {
   const { user, logout } = useAuth();
   const { showToast } = useToast();
   const [qrToken, setQrToken] = useState('');
-  const [countdown, setCountdown] = useState(30);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'qr' | 'history'>('qr');
   const [history, setHistory] = useState<Redemption[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [morningSnack, setMorningSnack] = useState('');
+  const [eveningSnack, setEveningSnack] = useState('');
+  const [nightSnack, setNightSnack] = useState('');
 
   const [lastRedemptionId, setLastRedemptionId] = useState<number | null>(null);
   const [newRedemption, setNewRedemption] = useState<Redemption | null>(null);
@@ -30,31 +32,28 @@ export function EmployeePortal() {
     try {
       const res = await qrApi.generate();
       setQrToken(res.data.qrToken);
-      setCountdown(res.data.expiresInSeconds);
       setLoading(false);
     } catch (err) {
-      showToast('Failed to generate QR code', 'error');
+      showToast('Failed to load QR code', 'error');
       setLoading(false);
     }
   }, [showToast]);
 
-  useEffect(() => {
-    fetchQr();
-    // Refresh QR every 25 seconds (5s before 30s expiry)
-    timerRef.current = setInterval(fetchQr, 25000);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [fetchQr]);
+  const fetchMenu = useCallback(async () => {
+    try {
+      const res = await menuApi.getToday();
+      setMorningSnack(res.data.morningSnack || '');
+      setEveningSnack(res.data.eveningSnack || '');
+      setNightSnack((res.data as any).nightSnack || '');
+    } catch {
+      // Silently fail or fallback
+    }
+  }, []);
 
   useEffect(() => {
-    countdownRef.current = setInterval(() => {
-      setCountdown((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => {
-      if (countdownRef.current) clearInterval(countdownRef.current);
-    };
-  }, []);
+    fetchQr();
+    fetchMenu();
+  }, [fetchQr, fetchMenu]);
   useEffect(() => {
     const initHistory = async () => {
       try {
@@ -201,6 +200,73 @@ export function EmployeePortal() {
       <div style={{ padding: '20px', maxWidth: '500px', margin: '0 auto' }}>
         {activeTab === 'qr' ? (
           <div className="animate-fade-in" style={{ textAlign: 'center' }}>
+            {/* Today's Snack Menu Card */}
+            <Card style={{
+              background: 'linear-gradient(135deg, rgba(255, 206, 0, 0.08) 0%, rgba(255, 206, 0, 0.02) 100%)',
+              border: '1px solid rgba(255, 206, 0, 0.15)',
+              padding: '16px 20px',
+              marginBottom: '16px',
+              textAlign: 'left',
+            }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#f1f5f9', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>🍔</span> Today's Snack Menu
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', color: '#94a3b8' }}>☀️ Morning Snack:</span>
+                  <span style={{
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    color: morningSnack ? '#fcd34d' : '#f87171',
+                    background: morningSnack ? 'rgba(251, 191, 36, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                  }}>
+                    {morningSnack || 'Not Configured'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', color: '#94a3b8' }}>🌙 Evening Snack:</span>
+                  <span style={{
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    color: eveningSnack ? '#60a5fa' : '#f87171',
+                    background: eveningSnack ? 'rgba(96, 165, 250, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                  }}>
+                    {eveningSnack || 'Not Configured'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', color: '#94a3b8' }}>🌃 Night Snack:</span>
+                  <span style={{
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    color: nightSnack ? '#a78bfa' : '#f87171',
+                    background: nightSnack ? 'rgba(167, 139, 250, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                  }}>
+                    {nightSnack || 'Not Configured'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '8px', marginTop: '2px' }}>
+                  <span style={{ fontSize: '13px', color: '#94a3b8' }}>☕ Beverages:</span>
+                  <span style={{
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: '#a78bfa',
+                    background: 'rgba(167, 139, 250, 0.1)',
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                  }}>
+                    Tea & Coffee
+                  </span>
+                </div>
+              </div>
+            </Card>
+
             <Card glow style={{ marginTop: '8px' }}>
               <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '20px' }}>
                 Show this QR code to the distributor
@@ -214,48 +280,89 @@ export function EmployeePortal() {
                     background: 'white',
                     padding: '24px',
                     borderRadius: '16px',
-                    display: 'inline-block',
+                    display: 'block',
                     boxShadow: '0 0 30px rgba(255, 206, 0, 0.15)',
+                    position: 'relative',
+                    maxWidth: '350px',
+                    width: '100%',
+                    margin: '0 auto',
+                    boxSizing: 'border-box',
                   }}
                   className="animate-pulse-glow"
                   >
                     <QRCode
                       value={qrToken}
-                      size={220}
-                      level="M"
-                      style={{ display: 'block' }}
+                      size={256}
+                      level="H"
+                      style={{ height: 'auto', maxWidth: '100%', width: '100%', display: 'block' }}
                     />
-                  </div>
-
-                  {/* Countdown */}
-                  <div style={{
-                    marginTop: '20px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                  }}>
-                    <div style={{
-                      width: '8px',
-                      height: '8px',
-                      borderRadius: '50%',
-                      background: countdown > 10 ? '#22c55e' : countdown > 5 ? '#f59e0b' : '#ef4444',
-                      animation: 'pulse-glow 1s ease-in-out infinite',
-                    }} />
-                    <span style={{
-                      color: '#94a3b8',
-                      fontSize: '13px',
-                    }}>
-                      Refreshes in <strong style={{ color: countdown > 10 ? '#22c55e' : countdown > 5 ? '#f59e0b' : '#ef4444' }}>{countdown}s</strong>
-                    </span>
+                    {user?.photoUrl ? (
+                      <div style={{
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        width: '24%',
+                        height: '24%',
+                        background: 'white',
+                        padding: '1.5%',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                      }}>
+                        <img
+                          src={`${API_BASE}${user.photoUrl}`}
+                          alt="Employee"
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            borderRadius: '50%',
+                            objectFit: 'cover',
+                          }}
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      </div>
+                    ) : (
+                      <div style={{
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        width: '24%',
+                        height: '24%',
+                        background: 'white',
+                        padding: '1.5%',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                      }}>
+                        <div style={{
+                          width: '100%',
+                          height: '100%',
+                          borderRadius: '50%',
+                          background: '#e2e8f0',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '28px',
+                        }}>
+                          👤
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <p style={{
                     color: '#475569',
-                    fontSize: '11px',
+                    fontSize: '12px',
                     marginTop: '16px',
+                    fontWeight: 500,
                   }}>
-                    QR code refreshes automatically for security
+                    Your permanent static QR code
                   </p>
                 </>
               )}
@@ -280,12 +387,23 @@ export function EmployeePortal() {
                         <Badge variant={r.session === 'MORNING' ? 'warning' : 'info'}>
                           {r.session === 'MORNING' ? '☀️ Morning' : '🌙 Evening'}
                         </Badge>
+                        <span style={{
+                          marginLeft: '8px',
+                          fontSize: '13px',
+                          fontWeight: 700,
+                          color: '#f1f5f9',
+                          background: 'rgba(255,255,255,0.06)',
+                          padding: '2px 8px',
+                          borderRadius: '6px'
+                        }}>
+                          {r.snackItem || 'Snack'}
+                        </span>
                         <p style={{ fontSize: '13px', color: '#94a3b8', marginTop: '8px' }}>
                           {r.redeemedAt}
                         </p>
                       </div>
-                      <Badge variant={r.redemptionMode === 'DYNAMIC_QR' ? 'success' : 'neutral'}>
-                        {r.redemptionMode === 'DYNAMIC_QR' ? 'QR' : 'Manual'}
+                      <Badge variant={r.redemptionMode === 'DYNAMIC_QR' || r.redemptionMode === 'STATIC_QR' ? 'success' : 'neutral'}>
+                        {r.redemptionMode === 'DYNAMIC_QR' || r.redemptionMode === 'STATIC_QR' ? 'QR' : 'Manual'}
                       </Badge>
                     </div>
                   </Card>
@@ -341,6 +459,10 @@ export function EmployeePortal() {
               gap: '6px'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                <span style={{ color: '#64748b' }}>Item Redeemed:</span>
+                <span style={{ color: '#ffce00', fontWeight: 700 }}>{newRedemption.snackItem}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                 <span style={{ color: '#64748b' }}>Time:</span>
                 <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{newRedemption.redeemedAt}</span>
               </div>
@@ -350,7 +472,7 @@ export function EmployeePortal() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                 <span style={{ color: '#64748b' }}>Mode:</span>
-                <span style={{ color: '#e2e8f0' }}>{newRedemption.redemptionMode === 'DYNAMIC_QR' ? 'QR Code' : 'Manual Entry'}</span>
+                <span style={{ color: '#e2e8f0' }}>{newRedemption.redemptionMode === 'DYNAMIC_QR' || newRedemption.redemptionMode === 'STATIC_QR' ? 'QR Code' : 'Manual Entry'}</span>
               </div>
             </div>
 

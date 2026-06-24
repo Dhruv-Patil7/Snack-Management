@@ -16,4 +16,7 @@ public class ManualRedeemRequest {
 
     @NotBlank(message = "Session is required")
     private String session;  // MORNING or EVENING
+
+    @NotBlank(message = "Snack item is required")
+    private String snackItem;
 }

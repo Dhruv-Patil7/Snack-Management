@@ -116,7 +116,8 @@ public class RedemptionService {
                 .employee(employee)
                 .distributor(distributor)
                 .session(session)
-                .redemptionMode(RedemptionMode.DYNAMIC_QR)
+                .redemptionMode(RedemptionMode.STATIC_QR)
+                .snackItem(request.getSnackItem())
                 .redeemedAt(LocalDateTime.now())
                 .build();
 
@@ -170,6 +171,7 @@ public class RedemptionService {
                 .distributor(distributor)
                 .session(session)
                 .redemptionMode(RedemptionMode.MANUAL)
+                .snackItem(request.getSnackItem())
                 .redeemedAt(LocalDateTime.now())
                 .build();
 
@@ -212,6 +214,7 @@ public class RedemptionService {
                 .redeemedAt(r.getRedeemedAt().format(DATETIME_FORMATTER))
                 .distributorId(r.getDistributor().getId())
                 .distributorName(r.getDistributor().getUsername())
+                .snackItem(r.getSnackItem())
                 .build();
     }
 }

@@ -33,6 +33,10 @@ public class AuthService {
 
         Long employeeId = user.getEmployee() != null ? user.getEmployee().getId() : null;
         String employeeName = user.getEmployee() != null ? user.getEmployee().getName() : null;
+        String photoUrl = null;
+        if (user.getEmployee() != null && user.getEmployee().getPhotoPath() != null) {
+            photoUrl = "/uploads/photos/" + user.getEmployee().getPhotoPath();
+        }
 
         String token = jwtService.generateLoginToken(
                 user.getId(),
@@ -48,6 +52,7 @@ public class AuthService {
                 .userId(user.getId())
                 .employeeId(employeeId)
                 .employeeName(employeeName)
+                .photoUrl(photoUrl)
                 .build();
     }
 

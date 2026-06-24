@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { useAuth } from '../../auth/AuthContext';
 import { useToast } from '../../components/Toast';
-import { redemptionApi, employeeApi } from '../../api';
+import { redemptionApi, employeeApi, menuApi } from '../../api';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Input } from '../../components/Input';
@@ -26,6 +26,8 @@ export function DistributorPortal() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [todaySnack, setTodaySnack] = useState('');
+  const [selectedSnacks, setSelectedSnacks] = useState<string[]>([]);
 
   // Forgot-ID state
   const [searchQuery, setSearchQuery] = useState('');
@@ -77,6 +79,29 @@ export function DistributorPortal() {
   }, [session, stopScanner, showToast]);
 
   useEffect(() => {
+    if (!session) return;
+    const fetchDailyMenu = async () => {
+      try {
+        const res = await menuApi.getToday();
+        const snackName = session === 'MORNING' 
+          ? res.data.morningSnack 
+          : session === 'EVENING' 
+            ? res.data.eveningSnack 
+            : (res.data as any).nightSnack;
+        setTodaySnack(snackName);
+        if (snackName) {
+          setSelectedSnacks([snackName]);
+        } else {
+          setSelectedSnacks(['Tea']);
+        }
+      } catch {
+        setSelectedSnacks(['Tea']);
+      }
+    };
+    fetchDailyMenu();
+  }, [session]);
+
+  useEffect(() => {
     if (view === 'scanner') {
       const timer = setTimeout(() => startScanner(), 300);
       return () => {
@@ -101,11 +126,11 @@ export function DistributorPortal() {
   };
 
   const handleConfirm = async () => {
-    if (!scanResult) return;
+    if (!scanResult || selectedSnacks.length === 0) return;
     setConfirmLoading(true);
 
     try {
-      await redemptionApi.confirm(scanResult.employeeId, session);
+      await redemptionApi.confirm(scanResult.employeeId, session, selectedSnacks.join(', '));
       setView('success');
       showToast('Snack redeemed successfully!', 'success');
     } catch (err: any) {
@@ -128,11 +153,11 @@ export function DistributorPortal() {
   };
 
   const handleManualRedeem = async () => {
-    if (!selectedEmployee || !pin) return;
+    if (!selectedEmployee || !pin || selectedSnacks.length === 0) return;
     setManualLoading(true);
 
     try {
-      await redemptionApi.manual(selectedEmployee.employeeCode, pin, session);
+      await redemptionApi.manual(selectedEmployee.employeeCode, pin, session, selectedSnacks.join(', '));
       setView('success');
       showToast('Snack redeemed successfully!', 'success');
     } catch (err: any) {
@@ -151,6 +176,7 @@ export function DistributorPortal() {
     setPin('');
     setSearchQuery('');
     setSearchResults([]);
+    setSelectedSnacks(todaySnack ? [todaySnack] : ['Tea']);
     setView('scanner');
   };
 
@@ -192,8 +218,8 @@ export function DistributorPortal() {
               Distributor Portal
             </h1>
             {session && (
-              <Badge variant={session === 'MORNING' ? 'warning' : 'info'}>
-                {session === 'MORNING' ? '☀️ Morning' : '🌙 Evening'}
+              <Badge variant={session === 'MORNING' ? 'warning' : session === 'EVENING' ? 'info' : 'success'}>
+                {session === 'MORNING' ? '☀️ Morning' : session === 'EVENING' ? '🌙 Evening' : '🌃 Night'}
               </Badge>
             )}
           </div>
@@ -251,24 +277,36 @@ export function DistributorPortal() {
                 style={{
                   cursor: 'pointer',
                   textAlign: 'center',
-                  padding: '32px',
+                  padding: '24px',
                   border: '1px solid rgba(245, 158, 11, 0.2)',
                 }}
               >
-                <span style={{ fontSize: '48px', display: 'block', marginBottom: '12px' }}>☀️</span>
-                <span style={{ fontSize: '22px', fontWeight: 700, color: '#fcd34d' }}>Morning Session</span>
+                <span style={{ fontSize: '40px', display: 'block', marginBottom: '8px' }}>☀️</span>
+                <span style={{ fontSize: '20px', fontWeight: 700, color: '#fcd34d' }}>Morning Session</span>
               </Card>
               <Card
                 onClick={() => selectSession('EVENING')}
                 style={{
                   cursor: 'pointer',
                   textAlign: 'center',
-                  padding: '32px',
+                  padding: '24px',
                   border: '1px solid rgba(59, 130, 246, 0.2)',
                 }}
               >
-                <span style={{ fontSize: '48px', display: 'block', marginBottom: '12px' }}>🌙</span>
-                <span style={{ fontSize: '22px', fontWeight: 700, color: '#93c5fd' }}>Evening Session</span>
+                <span style={{ fontSize: '40px', display: 'block', marginBottom: '8px' }}>🌙</span>
+                <span style={{ fontSize: '20px', fontWeight: 700, color: '#93c5fd' }}>Evening Session</span>
+              </Card>
+              <Card
+                onClick={() => selectSession('NIGHT')}
+                style={{
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  padding: '24px',
+                  border: '1px solid rgba(167, 139, 250, 0.2)',
+                }}
+              >
+                <span style={{ fontSize: '40px', display: 'block', marginBottom: '8px' }}>🌃</span>
+                <span style={{ fontSize: '20px', fontWeight: 700, color: '#c084fc' }}>Night Session</span>
               </Card>
             </div>
           </div>
@@ -366,8 +404,8 @@ export function DistributorPortal() {
                 </p>
               )}
 
-              <Badge variant={session === 'MORNING' ? 'warning' : 'info'}>
-                {session === 'MORNING' ? '☀️ Morning Session' : '🌙 Evening Session'}
+              <Badge variant={session === 'MORNING' ? 'warning' : session === 'EVENING' ? 'info' : 'success'}>
+                {session === 'MORNING' ? '☀️ Morning Session' : session === 'EVENING' ? '🌙 Evening Session' : '🌃 Night Session'}
               </Badge>
 
               {scanResult.alreadyRedeemed ? (
@@ -386,16 +424,58 @@ export function DistributorPortal() {
                   </p>
                 </div>
               ) : (
-                <Button
-                  variant="success"
-                  size="lg"
-                  fullWidth
-                  loading={confirmLoading}
-                  onClick={handleConfirm}
-                  style={{ marginTop: '24px' }}
-                >
-                  ✓ Confirm Redemption
-                </Button>
+                <>
+                  <div style={{ marginTop: '20px', textAlign: 'left', marginBottom: '16px' }}>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#94a3b8', marginBottom: '8px' }}>
+                      Select Snack Items (Multiple allowed)
+                    </label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      {[
+                        ...(todaySnack ? [{ id: todaySnack, label: `${todaySnack} (Today's Snack)` }] : []),
+                        { id: 'Tea', label: 'Tea' },
+                        { id: 'Coffee', label: 'Coffee' },
+                        { id: 'Extra Snacks', label: 'Extra Snacks' }
+                      ].map((option) => {
+                        const isChecked = selectedSnacks.includes(option.id);
+                        return (
+                          <label key={option.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '6px 4px', borderRadius: '6px', transition: 'background 150ms' }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                if (checked) {
+                                  setSelectedSnacks((prev) => [...prev, option.id]);
+                                } else {
+                                  setSelectedSnacks((prev) => prev.filter((item) => item !== option.id));
+                                }
+                              }}
+                              style={{ width: '18px', height: '18px', accentColor: '#ffce00', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '14px', color: isChecked ? '#ffce00' : '#e2e8f0', fontWeight: isChecked ? 600 : 400 }}>
+                              {option.label}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <Button
+                    variant="success"
+                    size="lg"
+                    fullWidth
+                    loading={confirmLoading}
+                    disabled={selectedSnacks.length === 0}
+                    onClick={handleConfirm}
+                    style={{ marginTop: '24px' }}
+                  >
+                    ✓ Confirm Redemption
+                  </Button>
+                </>
               )}
             </Card>
 
@@ -430,6 +510,9 @@ export function DistributorPortal() {
             <h2 style={{ fontSize: '24px', fontWeight: 700, color: '#86efac', marginBottom: '8px' }}>
               Snack Redeemed!
             </h2>
+            <p style={{ color: '#ffce00', fontWeight: 700, fontSize: '16px', marginBottom: '16px' }}>
+              Redeemed: {selectedSnacks.join(', ')}
+            </p>
             <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '32px' }}>
               Redemption recorded successfully
             </p>
@@ -554,6 +637,45 @@ export function DistributorPortal() {
                 <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#f1f5f9' }}>{selectedEmployee.name}</h3>
                 <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '20px' }}>{selectedEmployee.employeeCode}</p>
 
+                <div style={{ marginBottom: '16px', textAlign: 'left' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#94a3b8', marginBottom: '6px' }}>
+                    Select Snack Items (Multiple allowed)
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    {[
+                      ...(todaySnack ? [{ id: todaySnack, label: `${todaySnack} (Today's Snack)` }] : []),
+                      { id: 'Tea', label: 'Tea' },
+                      { id: 'Coffee', label: 'Coffee' },
+                      { id: 'Extra Snacks', label: 'Extra Snacks' }
+                    ].map((option) => {
+                      const isChecked = selectedSnacks.includes(option.id);
+                      return (
+                        <label key={option.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '6px 4px', borderRadius: '6px', transition: 'background 150ms' }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              if (checked) {
+                                setSelectedSnacks((prev) => [...prev, option.id]);
+                              } else {
+                                setSelectedSnacks((prev) => prev.filter((item) => item !== option.id));
+                              }
+                            }}
+                            style={{ width: '18px', height: '18px', accentColor: '#ffce00', cursor: 'pointer' }}
+                          />
+                          <span style={{ fontSize: '14px', color: isChecked ? '#ffce00' : '#e2e8f0', fontWeight: isChecked ? 600 : 400 }}>
+                            {option.label}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <Input
                   label="Enter 4-digit PIN"
                   type="password"
@@ -569,7 +691,7 @@ export function DistributorPortal() {
                   size="lg"
                   fullWidth
                   loading={manualLoading}
-                  disabled={pin.length !== 4}
+                  disabled={pin.length !== 4 || selectedSnacks.length === 0}
                   onClick={handleManualRedeem}
                 >
                   ✓ Confirm Redemption

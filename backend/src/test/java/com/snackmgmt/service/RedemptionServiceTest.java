@@ -188,6 +188,7 @@ class RedemptionServiceTest {
         ConfirmRedemptionRequest request = new ConfirmRedemptionRequest();
         request.setEmployeeId(10L);
         request.setSession("MORNING");
+        request.setSnackItem("Samosa");
 
         when(employeeRepository.findById(10L)).thenReturn(Optional.of(activeEmployee));
         when(userRepository.findById(2L)).thenReturn(Optional.of(distributorUser));
@@ -199,7 +200,8 @@ class RedemptionServiceTest {
                 .employee(activeEmployee)
                 .distributor(distributorUser)
                 .session(SnackSession.MORNING)
-                .redemptionMode(RedemptionMode.DYNAMIC_QR)
+                .redemptionMode(RedemptionMode.STATIC_QR)
+                .snackItem("Samosa")
                 .redeemedAt(LocalDateTime.now())
                 .build();
 
@@ -211,8 +213,9 @@ class RedemptionServiceTest {
         assertEquals(101L, response.getId());
         assertEquals(10L, response.getEmployeeId());
         assertEquals("MORNING", response.getSession());
-        assertEquals("DYNAMIC_QR", response.getRedemptionMode());
+        assertEquals("STATIC_QR", response.getRedemptionMode());
         assertEquals("dist1", response.getDistributorName());
+        assertEquals("Samosa", response.getSnackItem());
     }
 
     @Test
@@ -220,6 +223,7 @@ class RedemptionServiceTest {
         ConfirmRedemptionRequest request = new ConfirmRedemptionRequest();
         request.setEmployeeId(10L);
         request.setSession("MORNING");
+        request.setSnackItem("Samosa");
 
         Redemption existingRedemption = Redemption.builder()
                 .id(100L)
@@ -243,6 +247,7 @@ class RedemptionServiceTest {
         request.setEmployeeCode("EMP001");
         request.setPin("1234");
         request.setSession("EVENING");
+        request.setSnackItem("Vada");
 
         when(employeeRepository.findByEmployeeCode("EMP001")).thenReturn(Optional.of(activeEmployee));
         when(userRepository.findByEmployeeId(10L)).thenReturn(Optional.of(employeeUser));
@@ -257,6 +262,7 @@ class RedemptionServiceTest {
                 .distributor(distributorUser)
                 .session(SnackSession.EVENING)
                 .redemptionMode(RedemptionMode.MANUAL)
+                .snackItem("Vada")
                 .redeemedAt(LocalDateTime.now())
                 .build();
 
@@ -268,6 +274,7 @@ class RedemptionServiceTest {
         assertEquals(102L, response.getId());
         assertEquals("MANUAL", response.getRedemptionMode());
         assertEquals("EVENING", response.getSession());
+        assertEquals("Vada", response.getSnackItem());
     }
 
     @Test
@@ -276,6 +283,7 @@ class RedemptionServiceTest {
         request.setEmployeeCode("EMP001");
         request.setPin("9999");
         request.setSession("EVENING");
+        request.setSnackItem("Vada");
 
         when(employeeRepository.findByEmployeeCode("EMP001")).thenReturn(Optional.of(activeEmployee));
         when(userRepository.findByEmployeeId(10L)).thenReturn(Optional.of(employeeUser));
@@ -290,6 +298,7 @@ class RedemptionServiceTest {
         request.setEmployeeCode("EMP002");
         request.setPin("1234");
         request.setSession("EVENING");
+        request.setSnackItem("Vada");
 
         when(employeeRepository.findByEmployeeCode("EMP002")).thenReturn(Optional.of(inactiveEmployee));
 

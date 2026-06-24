@@ -52,20 +52,19 @@ class JwtServiceTest {
         assertEquals("10", claims.getSubject());
         assertEquals("QR", claims.get("type"));
         assertEquals(10L, claims.get("employeeId", Long.class));
-        assertNotNull(claims.getId()); // jti should exist
     }
 
     @Test
-    void validateQrToken_ReplayAttack_ThrowsException() {
+    void validateQrToken_MultipleValidations_Success() {
         String token = jwtService.generateQrToken(10L);
         assertNotNull(token);
 
-        // First validation should succeed
-        Claims claims = jwtService.validateQrToken(token);
-        assertNotNull(claims);
+        // Multiple validations should succeed because static tokens have no replay block
+        Claims claims1 = jwtService.validateQrToken(token);
+        assertNotNull(claims1);
 
-        // Second validation with the same token should fail due to jti cache check
-        assertThrows(JwtException.class, () -> jwtService.validateQrToken(token));
+        Claims claims2 = jwtService.validateQrToken(token);
+        assertNotNull(claims2);
     }
 
     @Test

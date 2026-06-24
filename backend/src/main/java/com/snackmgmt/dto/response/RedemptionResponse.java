@@ -18,4 +18,5 @@ public class RedemptionResponse {
     private String redeemedAt;
     private Long distributorId;
     private String distributorName;
+    private String snackItem;
 }

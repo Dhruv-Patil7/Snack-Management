@@ -36,6 +36,9 @@ public class Redemption {
     @Column(name = "redemption_mode", nullable = false, length = 20)
     private RedemptionMode redemptionMode;
 
+    @Column(name = "snack_item", length = 100)
+    private String snackItem;
+
     @Column(name = "redeemed_at", nullable = false)
     @Builder.Default
     private LocalDateTime redeemedAt = LocalDateTime.now();

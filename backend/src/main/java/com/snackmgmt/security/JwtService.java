@@ -57,15 +57,10 @@ public class JwtService {
      * Lifetime: 30 seconds. Includes a unique jti for one-time-use enforcement.
      */
     public String generateQrToken(Long employeeId) {
-        String jti = UUID.randomUUID().toString();
-
         return Jwts.builder()
                 .claim("type", "QR")
                 .claim("employeeId", employeeId)
-                .id(jti)
                 .subject(employeeId.toString())
-                .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + qrExpirationMs))
                 .signWith(signingKey)
                 .compact();
     }
@@ -93,21 +88,6 @@ public class JwtService {
         String type = claims.get("type", String.class);
         if (!"QR".equals(type)) {
             throw new JwtException("Token is not a QR token");
-        }
-
-        // Check jti for one-time use
-        String jti = claims.getId();
-        if (jti == null) {
-            throw new JwtException("QR token missing jti");
-        }
-
-        // Clean expired entries from cache periodically
-        cleanExpiredJti();
-
-        // Try to mark this jti as used
-        Instant previousUse = usedJtiCache.putIfAbsent(jti, claims.getExpiration().toInstant());
-        if (previousUse != null) {
-            throw new JwtException("QR token already used (replay detected)");
         }
 
         return claims;

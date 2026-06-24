@@ -11,6 +11,7 @@ import java.util.List;
 public class DashboardResponse {
     private long morningCount;
     private long eveningCount;
+    private long nightCount;
     private long monthlyTotal;
     private long totalActiveEmployees;
     private List<DailyStat> weeklyStats;
