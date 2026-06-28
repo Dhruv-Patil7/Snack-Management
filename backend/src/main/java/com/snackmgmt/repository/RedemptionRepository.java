@@ -92,6 +92,17 @@ public interface RedemptionRepository extends JpaRepository<Redemption, Long> {
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate);
 
+    // Distributor history
+    List<Redemption> findByDistributorIdOrderByRedeemedAtDesc(Long distributorId);
+
+    // Distributor monthly count
+    @Query("SELECT COUNT(r) FROM Redemption r WHERE r.distributor.id = :distributorId " +
+           "AND r.redeemedAt >= :startDate AND r.redeemedAt < :endDate")
+    long countByDistributorAndDateRange(
+            @Param("distributorId") Long distributorId,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
+
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.transaction.annotation.Transactional
     void deleteByEmployeeId(Long employeeId);

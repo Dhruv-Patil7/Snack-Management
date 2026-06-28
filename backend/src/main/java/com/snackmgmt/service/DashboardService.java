@@ -127,4 +127,31 @@ public class DashboardService {
         LocalDateTime monthEnd = currentMonth.plusMonths(1).atDay(1).atStartOfDay();
         return redemptionRepository.countByEmployeeAndDateRange(employeeId, monthStart, monthEnd);
     }
+
+    public List<RedemptionResponse> getDistributorHistory(Long distributorId) {
+        return redemptionRepository.findByDistributorIdOrderByRedeemedAtDesc(distributorId)
+                .stream()
+                .map(r -> RedemptionResponse.builder()
+                        .id(r.getId())
+                        .employeeId(r.getEmployee().getId())
+                        .employeeCode(r.getEmployee().getEmployeeCode())
+                        .employeeName(r.getEmployee().getName())
+                        .department(r.getEmployee().getDepartment())
+                        .session(r.getSession().name())
+                        .redemptionMode(r.getRedemptionMode().name())
+                        .redeemedAt(r.getRedeemedAt().format(DATETIME_FORMATTER))
+                        .distributorId(r.getDistributor().getId())
+                        .distributorName(r.getDistributor().getUsername())
+                        .snackItem(r.getSnackItem())
+                        .plantArea(r.getPlantArea())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    public long getDistributorMonthlyCount(Long distributorId) {
+        YearMonth currentMonth = YearMonth.now();
+        LocalDateTime monthStart = currentMonth.atDay(1).atStartOfDay();
+        LocalDateTime monthEnd = currentMonth.plusMonths(1).atDay(1).atStartOfDay();
+        return redemptionRepository.countByDistributorAndDateRange(distributorId, monthStart, monthEnd);
+    }
 }

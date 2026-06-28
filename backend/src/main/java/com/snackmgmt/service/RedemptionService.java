@@ -118,6 +118,7 @@ public class RedemptionService {
                 .session(session)
                 .redemptionMode(RedemptionMode.STATIC_QR)
                 .snackItem(request.getSnackItem())
+                .plantArea(request.getPlantArea())
                 .redeemedAt(LocalDateTime.now())
                 .build();
 
@@ -172,6 +173,7 @@ public class RedemptionService {
                 .session(session)
                 .redemptionMode(RedemptionMode.MANUAL)
                 .snackItem(request.getSnackItem())
+                .plantArea(request.getPlantArea())
                 .redeemedAt(LocalDateTime.now())
                 .build();
 
@@ -215,6 +217,7 @@ public class RedemptionService {
                 .distributorId(r.getDistributor().getId())
                 .distributorName(r.getDistributor().getUsername())
                 .snackItem(r.getSnackItem())
+                .plantArea(r.getPlantArea())
                 .build();
     }
 }

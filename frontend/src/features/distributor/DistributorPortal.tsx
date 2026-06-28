@@ -11,7 +11,17 @@ import type { ScanResult, Employee } from '../../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
-type View = 'session-select' | 'scanner' | 'verification' | 'success' | 'error' | 'forgot-id';
+const PLANT_AREAS = [
+  { id: 'TPP', label: 'TPP', emoji: '🏭' },
+  { id: 'E & I', label: 'E & I', emoji: '⚡' },
+  { id: 'CCR', label: 'CCR', emoji: '🖥️' },
+  { id: 'DCS', label: 'DCS', emoji: '📡' },
+  { id: 'Maintenance', label: 'Maintenance', emoji: '🔧' },
+  { id: 'Admin Block', label: 'Admin Block', emoji: '🏢' },
+  { id: 'Utilities', label: 'Utilities', emoji: '⚙️' },
+];
+
+type View = 'session-select' | 'area-select' | 'scanner' | 'verification' | 'success' | 'error' | 'forgot-id';
 
 export function DistributorPortal() {
   const { logout } = useAuth();
@@ -20,8 +30,15 @@ export function DistributorPortal() {
   const [session, setSession] = useState<string>(() => {
     return localStorage.getItem('distributor_session') || '';
   });
+  const [plantArea, setPlantArea] = useState<string>(() => {
+    return localStorage.getItem('distributor_area') || '';
+  });
   const [view, setView] = useState<View>(() => {
-    return localStorage.getItem('distributor_session') ? 'scanner' : 'session-select';
+    const savedSession = localStorage.getItem('distributor_session');
+    const savedArea = localStorage.getItem('distributor_area');
+    if (savedSession && savedArea) return 'scanner';
+    if (savedSession) return 'area-select';
+    return 'session-select';
   });
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
@@ -60,9 +77,9 @@ export function DistributorPortal() {
       await scanner.start(
         { facingMode: 'environment' },
         {
-          fps: 15, // Faster frame rate for more responsive scanning on mobile
+          fps: 15,
           qrbox: (width, height) => {
-            const size = Math.min(width, height) * 0.7; // Responsive square (70% of viewport size)
+            const size = Math.min(width, height) * 0.7;
             return { width: size, height: size };
           },
           aspectRatio: 1.0,
@@ -73,7 +90,7 @@ export function DistributorPortal() {
         },
         () => { /* ignore errors during scanning */ }
       );
-    } catch (err) {
+    } catch {
       showToast('Camera access denied. Please allow camera access.', 'error');
     }
   }, [session, stopScanner, showToast]);
@@ -83,10 +100,10 @@ export function DistributorPortal() {
     const fetchDailyMenu = async () => {
       try {
         const res = await menuApi.getToday();
-        const snackName = session === 'MORNING' 
-          ? res.data.morningSnack 
-          : session === 'EVENING' 
-            ? res.data.eveningSnack 
+        const snackName = session === 'MORNING'
+          ? res.data.morningSnack
+          : session === 'EVENING'
+            ? res.data.eveningSnack
             : (res.data as any).nightSnack;
         setTodaySnack(snackName);
         if (snackName) {
@@ -130,7 +147,7 @@ export function DistributorPortal() {
     setConfirmLoading(true);
 
     try {
-      await redemptionApi.confirm(scanResult.employeeId, session, selectedSnacks.join(', '));
+      await redemptionApi.confirm(scanResult.employeeId, session, selectedSnacks.join(', '), plantArea || undefined);
       setView('success');
       showToast('Snack redeemed successfully!', 'success');
     } catch (err: any) {
@@ -157,7 +174,7 @@ export function DistributorPortal() {
     setManualLoading(true);
 
     try {
-      await redemptionApi.manual(selectedEmployee.employeeCode, pin, session, selectedSnacks.join(', '));
+      await redemptionApi.manual(selectedEmployee.employeeCode, pin, session, selectedSnacks.join(', '), plantArea || undefined);
       setView('success');
       showToast('Snack redeemed successfully!', 'success');
     } catch (err: any) {
@@ -183,8 +200,58 @@ export function DistributorPortal() {
   const selectSession = (s: string) => {
     setSession(s);
     localStorage.setItem('distributor_session', s);
+    setView('area-select');
+  };
+
+  const selectArea = (area: string) => {
+    setPlantArea(area);
+    localStorage.setItem('distributor_area', area);
     setView('scanner');
   };
+
+
+
+  // Reusable snack selector
+  const SnackSelector = () => (
+    <div style={{ marginTop: '16px', textAlign: 'left', marginBottom: '16px' }}>
+      <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#94a3b8', marginBottom: '8px' }}>
+        Select Snack Items (Multiple allowed)
+      </label>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+        {[
+          ...(todaySnack ? [{ id: todaySnack, label: `${todaySnack} (Today's Snack)` }] : []),
+          { id: 'Tea', label: 'Tea' },
+          { id: 'Coffee', label: 'Coffee' },
+          { id: 'Extra Snacks', label: 'Extra Snacks' }
+        ].map((option) => {
+          const isChecked = selectedSnacks.includes(option.id);
+          return (
+            <label key={option.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '6px 4px', borderRadius: '6px', transition: 'background 150ms' }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              <input
+                type="checkbox"
+                checked={isChecked}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  if (checked) {
+                    setSelectedSnacks((prev) => [...prev, option.id]);
+                  } else {
+                    setSelectedSnacks((prev) => prev.filter((item) => item !== option.id));
+                  }
+                }}
+                style={{ width: '18px', height: '18px', accentColor: '#ffce00', cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: '14px', color: isChecked ? '#ffce00' : '#e2e8f0', fontWeight: isChecked ? 600 : 400 }}>
+                {option.label}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   return (
     <div style={{
@@ -217,17 +284,38 @@ export function DistributorPortal() {
             <h1 style={{ fontSize: '14px', fontWeight: 800, color: '#f5f5f4', letterSpacing: '-0.01em', lineHeight: '1.2' }}>
               Distributor Portal
             </h1>
-            {session && (
-              <Badge variant={session === 'MORNING' ? 'warning' : session === 'EVENING' ? 'info' : 'success'}>
-                {session === 'MORNING' ? '☀️ Morning' : session === 'EVENING' ? '🌙 Evening' : '🌃 Night'}
-              </Badge>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              {session && (
+                <Badge variant={session === 'MORNING' ? 'warning' : session === 'EVENING' ? 'info' : 'success'}>
+                  {session === 'MORNING' ? '☀️ Morning' : session === 'EVENING' ? '🌙 Evening' : '🌃 Night'}
+                </Badge>
+              )}
+              {plantArea && (
+                <span style={{
+                  fontSize: '11px',
+                  padding: '2px 8px',
+                  borderRadius: '20px',
+                  background: 'rgba(255, 206, 0, 0.1)',
+                  border: '1px solid rgba(255, 206, 0, 0.2)',
+                  color: '#ffce00',
+                  fontWeight: 600,
+                }}>
+                  📍 {plantArea}
+                </span>
+              )}
+            </div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           {session && view !== 'session-select' && (
             <button
-              onClick={() => { localStorage.removeItem('distributor_session'); setSession(''); setView('session-select'); }}
+              onClick={() => {
+                localStorage.removeItem('distributor_session');
+                localStorage.removeItem('distributor_area');
+                setSession('');
+                setPlantArea('');
+                setView('session-select');
+              }}
               style={{
                 background: 'rgba(255, 206, 0, 0.1)',
                 border: '1px solid rgba(255, 206, 0, 0.25)',
@@ -243,7 +331,11 @@ export function DistributorPortal() {
             </button>
           )}
           <button
-            onClick={() => { localStorage.removeItem('distributor_session'); logout(); }}
+            onClick={() => {
+              localStorage.removeItem('distributor_session');
+              localStorage.removeItem('distributor_area');
+              logout();
+            }}
             style={{
               background: 'rgba(239, 68, 68, 0.1)',
               border: '1px solid rgba(239, 68, 68, 0.2)',
@@ -312,6 +404,45 @@ export function DistributorPortal() {
           </div>
         )}
 
+        {/* Area / Department Selection */}
+        {view === 'area-select' && (
+          <div className="animate-fade-in" style={{ textAlign: 'center' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '8px', color: '#f1f5f9' }}>
+              Select Distribution Area
+            </h2>
+            <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '24px' }}>
+              Choose the plant area or department where you are distributing snacks
+            </p>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: '12px',
+              maxWidth: '480px',
+              margin: '0 auto',
+            }}>
+              {PLANT_AREAS.map((area) => (
+                <Card
+                  key={area.id}
+                  onClick={() => selectArea(area.id)}
+                  style={{
+                    cursor: 'pointer',
+                    textAlign: 'center',
+                    padding: '20px 12px',
+                    border: '1px solid rgba(255, 206, 0, 0.15)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  <span style={{ fontSize: '32px' }}>{area.emoji}</span>
+                  <span style={{ fontSize: '15px', fontWeight: 700, color: '#f1f5f9' }}>{area.label}</span>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* QR Scanner */}
         {view === 'scanner' && (
           <div className="animate-fade-in">
@@ -358,13 +489,13 @@ export function DistributorPortal() {
               {/* Photo */}
               {scanResult.photoUrl && (
                 <div style={{
-                  width: '120px',
-                  height: '120px',
+                  width: '240px',
+                  height: '240px',
                   borderRadius: '50%',
                   overflow: 'hidden',
-                  margin: '0 auto 16px',
-                  border: '3px solid rgba(255, 206, 0, 0.4)',
-                  boxShadow: '0 0 20px rgba(255, 206, 0, 0.2)',
+                  margin: '0 auto 20px',
+                  border: '4px solid rgba(255, 206, 0, 0.4)',
+                  boxShadow: '0 0 25px rgba(255, 206, 0, 0.35)',
                 }}>
                   <img
                     src={`${API_BASE}${scanResult.photoUrl}`}
@@ -377,16 +508,16 @@ export function DistributorPortal() {
 
               {!scanResult.photoUrl && (
                 <div style={{
-                  width: '120px',
-                  height: '120px',
+                  width: '240px',
+                  height: '240px',
                   borderRadius: '50%',
                   background: 'linear-gradient(135deg, #1e293b, #334155)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  margin: '0 auto 16px',
-                  fontSize: '48px',
-                  border: '3px solid rgba(255,255,255,0.1)',
+                  margin: '0 auto 20px',
+                  fontSize: '96px',
+                  border: '4px solid rgba(255,255,255,0.1)',
                 }}>
                   👤
                 </div>
@@ -425,44 +556,7 @@ export function DistributorPortal() {
                 </div>
               ) : (
                 <>
-                  <div style={{ marginTop: '20px', textAlign: 'left', marginBottom: '16px' }}>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#94a3b8', marginBottom: '8px' }}>
-                      Select Snack Items (Multiple allowed)
-                    </label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                      {[
-                        ...(todaySnack ? [{ id: todaySnack, label: `${todaySnack} (Today's Snack)` }] : []),
-                        { id: 'Tea', label: 'Tea' },
-                        { id: 'Coffee', label: 'Coffee' },
-                        { id: 'Extra Snacks', label: 'Extra Snacks' }
-                      ].map((option) => {
-                        const isChecked = selectedSnacks.includes(option.id);
-                        return (
-                          <label key={option.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '6px 4px', borderRadius: '6px', transition: 'background 150ms' }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={(e) => {
-                                const checked = e.target.checked;
-                                if (checked) {
-                                  setSelectedSnacks((prev) => [...prev, option.id]);
-                                } else {
-                                  setSelectedSnacks((prev) => prev.filter((item) => item !== option.id));
-                                }
-                              }}
-                              style={{ width: '18px', height: '18px', accentColor: '#ffce00', cursor: 'pointer' }}
-                            />
-                            <span style={{ fontSize: '14px', color: isChecked ? '#ffce00' : '#e2e8f0', fontWeight: isChecked ? 600 : 400 }}>
-                              {option.label}
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  <SnackSelector />
 
                   <Button
                     variant="success"
@@ -471,9 +565,10 @@ export function DistributorPortal() {
                     loading={confirmLoading}
                     disabled={selectedSnacks.length === 0}
                     onClick={handleConfirm}
-                    style={{ marginTop: '24px' }}
+                    style={{ marginTop: '16px' }}
                   >
                     ✓ Confirm Redemption
+                    {plantArea && <span style={{ fontSize: '12px', opacity: 0.8, marginLeft: '4px' }}>— {plantArea}</span>}
                   </Button>
                 </>
               )}
@@ -510,10 +605,15 @@ export function DistributorPortal() {
             <h2 style={{ fontSize: '24px', fontWeight: 700, color: '#86efac', marginBottom: '8px' }}>
               Snack Redeemed!
             </h2>
-            <p style={{ color: '#ffce00', fontWeight: 700, fontSize: '16px', marginBottom: '16px' }}>
-              Redeemed: {selectedSnacks.join(', ')}
+            <p style={{ color: '#ffce00', fontWeight: 700, fontSize: '16px', marginBottom: '4px' }}>
+              {selectedSnacks.join(', ')}
             </p>
-            <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '32px' }}>
+            {plantArea && (
+              <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '4px' }}>
+                📍 {plantArea}
+              </p>
+            )}
+            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '32px' }}>
               Redemption recorded successfully
             </p>
             <Button size="lg" fullWidth onClick={resetToScanner}>
@@ -622,59 +722,24 @@ export function DistributorPortal() {
                     src={`${API_BASE}${selectedEmployee.photoUrl}`}
                     alt={selectedEmployee.name}
                     style={{
-                      width: '100px', height: '100px', borderRadius: '50%',
-                      objectFit: 'cover', margin: '0 auto 12px', display: 'block',
-                      border: '3px solid rgba(255, 206, 0, 0.4)',
+                      width: '240px', height: '240px', borderRadius: '50%',
+                      objectFit: 'cover', margin: '0 auto 20px', display: 'block',
+                      border: '4px solid rgba(255, 206, 0, 0.4)',
+                      boxShadow: '0 0 25px rgba(255, 206, 0, 0.35)',
                     }}
                   />
                 ) : (
                   <div style={{
-                    width: '100px', height: '100px', borderRadius: '50%',
-                    background: '#334155', display: 'flex', alignItems: 'center',
-                    justifyContent: 'center', fontSize: '40px', margin: '0 auto 12px',
+                    width: '240px', height: '240px', borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #1e293b, #334155)', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', fontSize: '96px', margin: '0 auto 20px',
+                    border: '4px solid rgba(255,255,255,0.1)',
                   }}>👤</div>
                 )}
                 <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#f1f5f9' }}>{selectedEmployee.name}</h3>
-                <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '20px' }}>{selectedEmployee.employeeCode}</p>
+                <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '16px' }}>{selectedEmployee.employeeCode}</p>
 
-                <div style={{ marginBottom: '16px', textAlign: 'left' }}>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#94a3b8', marginBottom: '6px' }}>
-                    Select Snack Items (Multiple allowed)
-                  </label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                    {[
-                      ...(todaySnack ? [{ id: todaySnack, label: `${todaySnack} (Today's Snack)` }] : []),
-                      { id: 'Tea', label: 'Tea' },
-                      { id: 'Coffee', label: 'Coffee' },
-                      { id: 'Extra Snacks', label: 'Extra Snacks' }
-                    ].map((option) => {
-                      const isChecked = selectedSnacks.includes(option.id);
-                      return (
-                        <label key={option.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '6px 4px', borderRadius: '6px', transition: 'background 150ms' }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
-                          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              const checked = e.target.checked;
-                              if (checked) {
-                                setSelectedSnacks((prev) => [...prev, option.id]);
-                              } else {
-                                setSelectedSnacks((prev) => prev.filter((item) => item !== option.id));
-                              }
-                            }}
-                            style={{ width: '18px', height: '18px', accentColor: '#ffce00', cursor: 'pointer' }}
-                          />
-                          <span style={{ fontSize: '14px', color: isChecked ? '#ffce00' : '#e2e8f0', fontWeight: isChecked ? 600 : 400 }}>
-                            {option.label}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
+                <SnackSelector />
 
                 <Input
                   label="Enter 4-digit PIN"
@@ -683,7 +748,7 @@ export function DistributorPortal() {
                   value={pin}
                   onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
                   placeholder="• • • •"
-                  style={{ textAlign: 'center', fontSize: '24px', letterSpacing: '12px' }}
+                  style={{ textAlign: 'center', fontSize: '24px', letterSpacing: '12px', marginTop: '16px' }}
                 />
 
                 <Button
@@ -693,8 +758,10 @@ export function DistributorPortal() {
                   loading={manualLoading}
                   disabled={pin.length !== 4 || selectedSnacks.length === 0}
                   onClick={handleManualRedeem}
+                  style={{ marginTop: '8px' }}
                 >
                   ✓ Confirm Redemption
+                  {plantArea && <span style={{ fontSize: '12px', opacity: 0.8, marginLeft: '4px' }}>— {plantArea}</span>}
                 </Button>
 
                 <Button

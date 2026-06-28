@@ -8,10 +8,12 @@ import { Modal } from '../../components/Modal';
 import { Badge } from '../../components/Badge';
 import { Spinner } from '../../components/Spinner';
 import type { Employee, UserAccount, Redemption, DashboardData } from '../../types';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
-type Tab = 'dashboard' | 'directory' | 'system-accounts' | 'history';
+type Tab = 'dashboard' | 'directory' | 'system-accounts' | 'history' | 'reports';
 
 function Spoiler({ value, color }: { value: string; color: string }) {
   const [revealed, setRevealed] = useState(false);
@@ -91,6 +93,11 @@ export function AdminPortal() {
   const [expandedEmpIds, setExpandedEmpIds] = useState<number[]>([]);
   const [employeeSummaries, setEmployeeSummaries] = useState<Record<number, { history: Redemption[], monthlyCount: number }>>({});
   const [loadingSummaryIds, setLoadingSummaryIds] = useState<number[]>([]);
+
+  // Distributor History (Admin Master Expansion)
+  const [expandedDistIds, setExpandedDistIds] = useState<number[]>([]);
+  const [distributorSummaries, setDistributorSummaries] = useState<Record<number, { history: Redemption[], monthlyCount: number }>>({});
+  const [loadingDistSummaryIds, setLoadingDistSummaryIds] = useState<number[]>([]);
 
   // Modals
   const [showResetPw, setShowResetPw] = useState<number | null>(null);
@@ -287,7 +294,7 @@ export function AdminPortal() {
     if (activeTab === 'system-accounts') {
       fetchUsers();
     }
-    if (activeTab === 'history') {
+    if (activeTab === 'history' || activeTab === 'reports') {
       fetchHistoryEmployees(0);
     }
   }, [activeTab, fetchDashboard, fetchMenu]);
@@ -393,6 +400,154 @@ export function AdminPortal() {
     }
   };
 
+  const toggleExpandDistributor = async (distId: number) => {
+    if (expandedDistIds.includes(distId)) {
+      setExpandedDistIds(expandedDistIds.filter(id => id !== distId));
+    } else {
+      setExpandedDistIds([...expandedDistIds, distId]);
+      if (!distributorSummaries[distId]) {
+        setLoadingDistSummaryIds(prev => [...prev, distId]);
+        try {
+          const res = await dashboardApi.distributorSummary(distId);
+          setDistributorSummaries(prev => ({
+            ...prev,
+            [distId]: { history: res.data.history, monthlyCount: res.data.monthlyCount }
+          }));
+        } catch {
+          showToast('Failed to load distributor statistics', 'error');
+        } finally {
+          setLoadingDistSummaryIds(prev => prev.filter(id => id !== distId));
+        }
+      }
+    }
+  };
+
+  const downloadEmployeePDF = (employee: Employee, summaryData: { history: Redemption[]; monthlyCount: number }) => {
+    const doc = new jsPDF();
+    
+    // Header section
+    doc.setFillColor(33, 41, 55); // Dark blue header style
+    doc.rect(0, 0, 210, 35, 'F');
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.text('ULTRATECH CEMENT', 15, 18);
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Employee Snack Redemption Report', 15, 26);
+    
+    const todayStr = new Date().toLocaleString();
+    doc.text(`Generated: ${todayStr}`, 195, 26, { align: 'right' });
+    
+    // Employee Info Card
+    doc.setTextColor(33, 41, 55);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('EMPLOYEE DETAILS', 15, 48);
+    
+    doc.setDrawColor(226, 232, 240);
+    doc.line(15, 51, 195, 51);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text(`Name: ${employee.name}`, 15, 58);
+    doc.text(`Employee Code: ${employee.employeeCode}`, 15, 64);
+    doc.text(`Department: ${employee.department || '-'}`, 15, 70);
+    doc.text(`Type: ${employee.employeeType}`, 15, 76);
+    
+    // Statistics Card
+    doc.setFont('helvetica', 'bold');
+    doc.text('CONSUMPTION SUMMARY', 110, 48);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Total Snacks Consumed: ${summaryData.history.length}`, 110, 58);
+    doc.text(`Consumed This Month: ${summaryData.monthlyCount}`, 110, 64);
+    
+    // Calculate favorite snack and most skipped day
+    const snackCounts: Record<string, number> = {};
+    const weekdayCounts: Record<string, number> = {
+      'Monday': 0, 'Tuesday': 0, 'Wednesday': 0, 'Thursday': 0, 'Friday': 0, 'Saturday': 0, 'Sunday': 0
+    };
+    const dayMap = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    
+    summaryData.history.forEach(log => {
+      const item = log.snackItem || 'Beverage/Other';
+      snackCounts[item] = (snackCounts[item] || 0) + 1;
+      if (log.redeemedAt) {
+        const dateStr = log.redeemedAt.split(' ')[0];
+        const [yr, mo, dy] = dateStr.split('-').map(Number);
+        const date = new Date(yr, mo - 1, dy);
+        if (!isNaN(date.getTime())) {
+          const dayName = dayMap[date.getDay()];
+          weekdayCounts[dayName] = (weekdayCounts[dayName] || 0) + 1;
+        }
+      }
+    });
+
+    let favoriteSnack = 'None';
+    let favoriteSnackCount = 0;
+    Object.entries(snackCounts).forEach(([snack, count]) => {
+      if (count > favoriteSnackCount) {
+        favoriteSnack = snack;
+        favoriteSnackCount = count;
+      }
+    });
+
+    const workdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    let mostSkippedDay = 'None';
+    let minCount = Infinity;
+    if (summaryData.history.length > 0) {
+      workdays.forEach(day => {
+        const count = weekdayCounts[day];
+        if (count < minCount) {
+          minCount = count;
+          mostSkippedDay = day;
+        }
+      });
+      if (minCount === 0) mostSkippedDay = `${mostSkippedDay} (Never)`;
+      else mostSkippedDay = `${mostSkippedDay} (${minCount} time${minCount > 1 ? 's' : ''})`;
+    } else {
+      mostSkippedDay = 'N/A';
+    }
+
+    doc.text(`Favorite Snack: ${favoriteSnackCount > 0 ? `${favoriteSnack} (${favoriteSnackCount})` : 'None'}`, 110, 70);
+    doc.text(`Most Skipped Day: ${mostSkippedDay}`, 110, 76);
+    
+    // Table Header
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('REDEMPTION HISTORY LOG', 15, 92);
+    doc.line(15, 95, 195, 95);
+    
+    // Detailed Logs Table using jspdf-autotable
+    const tableRows = summaryData.history.map(log => [
+      log.redeemedAt || '-',
+      log.session === 'MORNING' ? 'Morning' : log.session === 'EVENING' ? 'Evening' : log.session === 'NIGHT' ? 'Night' : log.session || '-',
+      log.snackItem || '-',
+      log.redemptionMode === 'DYNAMIC_QR' || log.redemptionMode === 'STATIC_QR' ? 'QR Code' : 'Manual Entry',
+      log.distributorName || '-'
+    ]);
+    
+    autoTable(doc, {
+      startY: 100,
+      head: [['Date & Time', 'Session', 'Redeemed Item', 'Redemption Mode', 'Scanned By']],
+      body: tableRows,
+      theme: 'striped',
+      headStyles: { fillColor: [33, 41, 55], textColor: [255, 255, 255] },
+      styles: { fontSize: 9 },
+      columnStyles: {
+        0: { cellWidth: 40 },
+        1: { cellWidth: 25 },
+        2: { cellWidth: 40 },
+        3: { cellWidth: 35 },
+        4: { cellWidth: 40 }
+      }
+    });
+    
+    doc.save(`${employee.name.replace(/\s+/g, '_')}_snack_history.pdf`);
+  };
+
   const handlePhotoUpload = async (empId: number, file: File) => {
     try {
       await employeeApi.uploadPhoto(empId, file);
@@ -408,6 +563,7 @@ export function AdminPortal() {
     { key: 'directory', label: 'User Master', icon: '👥' },
     { key: 'system-accounts', label: 'Admin Master', icon: '🔑' },
     { key: 'history', label: 'History', icon: '📋' },
+    { key: 'reports', label: 'Reports', icon: '📄' },
   ];
 
   return (
@@ -1152,57 +1308,190 @@ export function AdminPortal() {
                     </tr>
                   </thead>
                   <tbody>
-                    {users.filter((u) => u.employeeId === null).map((u) => (
-                      <tr key={u.id} style={{
-                        background: 'rgba(21, 21, 19, 0.4)',
-                        borderRadius: '10px',
-                      }}>
-                        <td style={{ padding: '12px', color: '#f1f5f9', fontSize: '14px', fontWeight: 500 }}>
-                          <div>{u.username}</div>
-                          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px', fontWeight: 'normal' }}>
-                            Key: <Spoiler value={u.passwordRaw || 'N/A'} color="#ffce00" />
-                          </div>
-                        </td>
-                        <td style={{ padding: '12px' }}>
-                          <Badge variant={u.role === 'ADMIN' ? 'danger' : 'warning'}>{u.role}</Badge>
-                        </td>
-                        <td style={{ padding: '12px' }}>
-                          <Badge variant={u.active ? 'success' : 'danger'}>{u.active ? 'Active' : 'Inactive'}</Badge>
-                        </td>
-                        <td style={{ padding: '12px', display: 'flex', gap: '6px', alignItems: 'center' }}>
-                          <Button variant="secondary" size="sm" onClick={() => handleStartEditSystemUser(u)}>Edit</Button>
-                          {u.username !== user?.username ? (
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: '200px' }}>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                style={{ width: '110px' }}
-                                onClick={async () => {
-                                  await userApi.toggleActive(u.id);
-                                  showToast('Status toggled', 'info');
-                                  fetchUsers();
-                                }}
-                              >
-                                {u.active ? 'Deactivate' : 'Activate'}
-                              </Button>
-                              {!u.active && (
+                    {users.filter((u) => u.employeeId === null).map((u) => {
+                      const isExpanded = expandedDistIds.includes(u.id);
+                      const isLoadingSummary = loadingDistSummaryIds.includes(u.id);
+                      const summary = distributorSummaries[u.id];
+
+                      return (
+                        <React.Fragment key={u.id}>
+                          <tr style={{
+                            background: 'rgba(21, 21, 19, 0.4)',
+                            borderRadius: '10px',
+                          }}>
+                            <td style={{ padding: '12px', color: '#f1f5f9', fontSize: '14px', fontWeight: 500 }}>
+                              <div>{u.username}</div>
+                              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px', fontWeight: 'normal' }}>
+                                Key: <Spoiler value={u.passwordRaw || 'N/A'} color="#ffce00" />
+                              </div>
+                            </td>
+                            <td style={{ padding: '12px' }}>
+                              <Badge variant={u.role === 'ADMIN' ? 'danger' : 'warning'}>{u.role}</Badge>
+                            </td>
+                            <td style={{ padding: '12px' }}>
+                              <Badge variant={u.active ? 'success' : 'danger'}>{u.active ? 'Active' : 'Inactive'}</Badge>
+                            </td>
+                            <td style={{ padding: '12px', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                              <Button variant="secondary" size="sm" onClick={() => handleStartEditSystemUser(u)}>Edit</Button>
+                              {u.role === 'DISTRIBUTOR' && (
                                 <Button
-                                  variant="ghost"
-                                  className="btn-ghost-danger"
+                                  variant={isExpanded ? 'secondary' : 'ghost'}
                                   size="sm"
-                                  style={{ width: '80px' }}
-                                  onClick={() => setShowDeleteConfirm({ id: u.id, name: `@${u.username}`, type: 'user' })}
+                                  onClick={() => toggleExpandDistributor(u.id)}
                                 >
-                                  Delete
+                                  {isExpanded ? 'Collapse ↩' : 'Stats 📋'}
                                 </Button>
                               )}
-                            </div>
-                          ) : (
-                            <span style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', paddingLeft: '8px' }}>Logged In (Self)</span>
+                              {u.username !== user?.username ? (
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: '200px' }}>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    style={{ width: '110px' }}
+                                    onClick={async () => {
+                                      await userApi.toggleActive(u.id);
+                                      showToast('Status toggled', 'info');
+                                      fetchUsers();
+                                    }}
+                                  >
+                                    {u.active ? 'Deactivate' : 'Activate'}
+                                  </Button>
+                                  {!u.active && (
+                                    <Button
+                                      variant="ghost"
+                                      className="btn-ghost-danger"
+                                      size="sm"
+                                      style={{ width: '80px' }}
+                                      onClick={() => setShowDeleteConfirm({ id: u.id, name: `@${u.username}`, type: 'user' })}
+                                    >
+                                      Delete
+                                    </Button>
+                                  )}
+                                </div>
+                              ) : (
+                                <span style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', paddingLeft: '8px' }}>Logged In (Self)</span>
+                              )}
+                            </td>
+                          </tr>
+
+                          {/* Expanded Distributor stats row */}
+                          {isExpanded && (
+                            <tr style={{ background: 'rgba(21, 21, 19, 0.2)' }}>
+                              <td colSpan={4} style={{ padding: '16px 24px', borderLeft: '3px solid #ffce00' }}>
+                                {isLoadingSummary ? (
+                                  <div style={{ display: 'flex', justifyContent: 'center', padding: '12px' }}>
+                                    <Spinner />
+                                  </div>
+                                ) : summary ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <span style={{ fontSize: '15px', color: '#e2e8f0', fontWeight: 700 }}>
+                                        📊 Distributor Distribution Stats
+                                      </span>
+                                      <Badge variant="info">
+                                        Distributed {summary.monthlyCount} Snacks This Month
+                                      </Badge>
+                                    </div>
+
+                                    {(() => {
+                                      const history = summary.history || [];
+                                      const total = history.length;
+                                      
+                                      const snackCounts: Record<string, number> = {};
+                                      history.forEach(log => {
+                                        const item = log.snackItem || 'Beverage/Other';
+                                        snackCounts[item] = (snackCounts[item] || 0) + 1;
+                                      });
+
+                                      let favoriteSnack = 'None';
+                                      let favoriteSnackCount = 0;
+                                      Object.entries(snackCounts).forEach(([snack, count]) => {
+                                        if (count > favoriteSnackCount) {
+                                          favoriteSnack = snack;
+                                          favoriteSnackCount = count;
+                                        }
+                                      });
+
+                                      return (
+                                        <>
+                                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                                            {[
+                                              { label: 'Total Distributed', value: total, color: '#ffce00', bg: 'rgba(255, 206, 0, 0.08)', border: 'rgba(255, 206, 0, 0.15)' },
+                                              { label: 'Distributed This Month', value: summary.monthlyCount, color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.08)', border: 'rgba(56, 189, 248, 0.15)' },
+                                              { label: 'Most Distributed Snack', value: favoriteSnackCount > 0 ? `${favoriteSnack} (${favoriteSnackCount})` : 'None', color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.08)', border: 'rgba(167, 139, 250, 0.15)' },
+                                            ].map((card, i) => (
+                                              <div key={i} style={{
+                                                background: card.bg,
+                                                border: `1px solid ${card.border}`,
+                                                borderRadius: '12px',
+                                                padding: '12px 16px',
+                                              }}>
+                                                <p style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: '4px', marginTop: 0 }}>
+                                                  {card.label}
+                                                </p>
+                                                <p style={{ color: card.color, fontSize: '16px', fontWeight: 800, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={String(card.value)}>
+                                                  {card.value}
+                                                </p>
+                                              </div>
+                                            ))}
+                                          </div>
+
+                                          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '16px', marginTop: '8px' }}>
+                                            <p style={{ fontSize: '13px', color: '#e2e8f0', fontWeight: 600, marginBottom: '12px', marginTop: 0 }}>
+                                              📋 Distribution Log History
+                                            </p>
+                                            
+                                            {history.length === 0 ? (
+                                              <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '12px' }}>
+                                                No distributions recorded.
+                                              </p>
+                                            ) : (
+                                              <div style={{ overflowX: 'auto', maxHeight: '200px', overflowY: 'auto' }}>
+                                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                                  <thead>
+                                                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                                      {['Date & Time', 'Session', 'Employee', 'Plant Area', 'Snack Item'].map((th) => (
+                                                        <th key={th} style={{
+                                                          textAlign: 'left', padding: '6px 8px', color: '#64748b',
+                                                          fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em'
+                                                        }}>{th}</th>
+                                                      ))}
+                                                    </tr>
+                                                  </thead>
+                                                  <tbody>
+                                                    {history.map((log) => (
+                                                      <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                                                        <td style={{ padding: '8px', color: '#e2e8f0', fontSize: '13px' }}>{log.redeemedAt}</td>
+                                                        <td style={{ padding: '8px' }}>
+                                                          <Badge variant={log.session === 'MORNING' ? 'warning' : 'info'}>
+                                                            {log.session === 'MORNING' ? '☀️ Morning' : '🌙 Evening'}
+                                                          </Badge>
+                                                        </td>
+                                                        <td style={{ padding: '8px', color: '#e2e8f0', fontSize: '13px' }}>{log.employeeName} ({log.employeeCode})</td>
+                                                        <td style={{ padding: '8px', color: '#94a3b8', fontSize: '13px' }}>{log.plantArea || '-'}</td>
+                                                        <td style={{ padding: '8px', color: '#e2e8f0', fontSize: '13px', fontWeight: 600 }}>{log.snackItem || '-'}</td>
+                                                      </tr>
+                                                    ))}
+                                                  </tbody>
+                                                </table>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </>
+                                      );
+                                    })()}
+                                  </div>
+                                ) : (
+                                  <p style={{ color: '#ef4444', fontSize: '13px', textAlign: 'center' }}>
+                                    Failed to load distributor details.
+                                  </p>
+                                )}
+                              </td>
+                            </tr>
                           )}
-                        </td>
-                      </tr>
-                    ))}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1321,9 +1610,18 @@ export function AdminPortal() {
                                         <span style={{ fontSize: '15px', color: '#e2e8f0', fontWeight: 700 }}>
                                           📊 Consumption Analytics & Statistics
                                         </span>
-                                        <Badge variant="warning">
-                                          Consumed {summary.monthlyCount} Snacks This Month
-                                        </Badge>
+                                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                          <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={() => downloadEmployeePDF(emp, summary)}
+                                          >
+                                            Download PDF Report 📄
+                                          </Button>
+                                          <Badge variant="warning">
+                                            Consumed {summary.monthlyCount} Snacks This Month
+                                          </Badge>
+                                        </div>
                                       </div>
 
                                       {(() => {
@@ -1349,7 +1647,8 @@ export function AdminPortal() {
                                           
                                           if (log.redeemedAt) {
                                             const dateStr = log.redeemedAt.split(' ')[0];
-                                            const date = new Date(dateStr);
+                                            const [yr, mo, dy] = dateStr.split('-').map(Number);
+                                            const date = new Date(yr, mo - 1, dy);
                                             if (!isNaN(date.getTime())) {
                                               const dayName = dayMap[date.getDay()];
                                               weekdayCounts[dayName] = (weekdayCounts[dayName] || 0) + 1;
@@ -1366,26 +1665,28 @@ export function AdminPortal() {
                                           }
                                         });
 
-                                        const workdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+                                        // Most Skipped Day = the workday (Mon-Sat) with fewest redemptions
+                                        // Includes 0-count days — those are literally the skipped days
+                                        const workdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
                                         let mostSkippedDay = 'None';
                                         let minCount = Infinity;
-                                        let hasAnyHistory = false;
-                                        
-                                        workdays.forEach(day => {
-                                          const count = weekdayCounts[day];
-                                          if (count > 0) hasAnyHistory = true;
-                                          if (count < minCount) {
-                                            minCount = count;
-                                            mostSkippedDay = day;
-                                          }
-                                        });
 
-                                        if (!hasAnyHistory) {
+                                        const hasAnyData = total > 0;
+                                        if (!hasAnyData) {
                                           mostSkippedDay = 'No Data';
-                                        } else if (minCount === 0) {
-                                          mostSkippedDay = `${mostSkippedDay} (Never Visited)`;
                                         } else {
-                                          mostSkippedDay = `${mostSkippedDay} (${minCount} time${minCount > 1 ? 's' : ''})`;
+                                          workdays.forEach(day => {
+                                            const count = weekdayCounts[day];
+                                            if (count < minCount) {
+                                              minCount = count;
+                                              mostSkippedDay = day;
+                                            }
+                                          });
+                                          if (minCount === 0) {
+                                            mostSkippedDay = `${mostSkippedDay} (Never redeemed)`;
+                                          } else {
+                                            mostSkippedDay = `${mostSkippedDay} (${minCount} time${minCount > 1 ? 's' : ''})`;
+                                          }
                                         }
 
                                         return (
@@ -1503,7 +1804,8 @@ export function AdminPortal() {
                                                             const barHeight = (count / maxWeekdayCount) * chartHeight;
                                                             const x = 32 + idx * 42;
                                                             const y = 15 + chartHeight - barHeight;
-                                                            const isSkipped = count === 0 && day !== 'Saturday' && day !== 'Sunday';
+                                                            const isLeaveDay = day === 'Sunday';
+                                                            const isSkipped = count === 0 && !isLeaveDay;
                                                             return (
                                                               <g key={day}>
                                                                 {count === 0 ? (
@@ -1513,11 +1815,11 @@ export function AdminPortal() {
                                                                     width="28"
                                                                     height={chartHeight}
                                                                     rx="4"
-                                                                    fill={isSkipped ? "rgba(239, 68, 68, 0.05)" : "rgba(255,255,255,0.01)"}
-                                                                    stroke={isSkipped ? "rgba(239, 68, 68, 0.3)" : "rgba(255,255,255,0.05)"}
+                                                                    fill={isLeaveDay ? "rgba(148, 163, 184, 0.05)" : "rgba(239, 68, 68, 0.05)"}
+                                                                    stroke={isLeaveDay ? "rgba(148, 163, 184, 0.25)" : "rgba(239, 68, 68, 0.3)"}
                                                                     strokeDasharray="3 3"
                                                                   >
-                                                                    <title>{day}: 0 redemptions (Skipped)</title>
+                                                                    <title>{day}: {isLeaveDay ? 'Leave Day' : '0 redemptions (Skipped)'}</title>
                                                                   </rect>
                                                                 ) : (
                                                                   <rect
@@ -1534,20 +1836,20 @@ export function AdminPortal() {
                                                                 )}
                                                                 <text
                                                                   x={x + 14}
-                                                                  y={count === 0 ? 15 + chartHeight / 2 + 4 : y - 5}
-                                                                  fill={count === 0 ? (isSkipped ? "#ef4444" : "#64748b") : "#34d399"}
+                                                                  y={15 + chartHeight / 2 + 4}
+                                                                  fill={count > 0 ? "#34d399" : isLeaveDay ? "#94a3b8" : "#ef4444"}
                                                                   fontSize="9"
                                                                   fontWeight="700"
                                                                   textAnchor="middle"
                                                                 >
-                                                                  {count === 0 ? (isSkipped ? "Skip" : "-") : count}
+                                                                  {count > 0 ? count : isLeaveDay ? 'Leave' : 'Skip'}
                                                                 </text>
                                                                 <text
                                                                   x={x + 14}
                                                                   y={15 + chartHeight + 16}
-                                                                  fill={count === 0 && isSkipped ? "#f87171" : "#94a3b8"}
+                                                                  fill={isSkipped ? "#f87171" : isLeaveDay ? "#94a3b8" : "#94a3b8"}
                                                                   fontSize="10"
-                                                                  fontWeight={count === 0 && isSkipped ? "700" : "600"}
+                                                                  fontWeight={isSkipped || isLeaveDay ? "700" : "600"}
                                                                   textAnchor="middle"
                                                                 >
                                                                   {shortDays[idx]}
@@ -1640,6 +1942,76 @@ export function AdminPortal() {
                 )}
               </>
             )}
+          </div>
+        )}
+
+        {/* ===== Reports ===== */}
+        {activeTab === 'reports' && (
+          <div className="animate-fade-in">
+            <div style={{ marginBottom: '20px' }}>
+              <h2 style={{ fontSize: '24px', fontWeight: 700, color: '#f1f5f9' }}>Snack Consumption Reports</h2>
+              <p style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>Search and select an employee to generate and download their comprehensive snack redemption PDF report.</p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '600px', background: 'rgba(21, 21, 19, 0.4)', padding: '24px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#94a3b8', marginBottom: '8px' }}>Select Employee</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    placeholder="Search employee by name or code..."
+                    value={historySearch}
+                    onChange={(e) => setHistorySearch(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && fetchHistoryEmployees(0)}
+                    style={{
+                      flex: 1,
+                      padding: '10px 14px',
+                      background: 'rgba(21, 21, 19, 0.6)',
+                      border: '1px solid #3e3e3a',
+                      borderRadius: '10px',
+                      color: '#f1f5f9',
+                      fontSize: '14px',
+                      outline: 'none',
+                    }}
+                  />
+                  <Button variant="secondary" onClick={() => fetchHistoryEmployees(0)}>Find</Button>
+                </div>
+              </div>
+
+              {historyEmployees.length > 0 && (
+                <div style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', background: 'rgba(0,0,0,0.2)' }}>
+                  {historyEmployees.map(emp => (
+                    <div
+                      key={emp.id}
+                      onClick={async () => {
+                        showToast(`Loading details for ${emp.name}...`, 'info');
+                        try {
+                          const res = await dashboardApi.employeeSummary(emp.id);
+                          downloadEmployeePDF(emp, res.data);
+                          showToast(`Report downloaded for ${emp.name}`, 'success');
+                        } catch {
+                          showToast('Failed to generate report', 'error');
+                        }
+                      }}
+                      style={{
+                        padding: '10px 14px',
+                        cursor: 'pointer',
+                        borderBottom: '1px solid rgba(255,255,255,0.03)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        color: '#e2e8f0',
+                        fontSize: '13px',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,206,0,0.08)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <span>{emp.name} ({emp.employeeCode})</span>
+                      <span style={{ fontSize: '11px', color: '#ffce00', fontWeight: 'bold' }}>Click to Download Report 📥</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </main>

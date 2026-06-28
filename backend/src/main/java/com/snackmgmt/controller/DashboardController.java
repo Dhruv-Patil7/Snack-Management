@@ -32,4 +32,15 @@ public class DashboardController {
                 "monthlyCount", monthlyCount
         ));
     }
+
+    @GetMapping("/distributor/{id}")
+    public ResponseEntity<Map<String, Object>> getDistributorSummary(@PathVariable Long id) {
+        List<RedemptionResponse> history = dashboardService.getDistributorHistory(id);
+        long monthlyCount = dashboardService.getDistributorMonthlyCount(id);
+
+        return ResponseEntity.ok(Map.of(
+                "history", history,
+                "monthlyCount", monthlyCount
+        ));
+    }
 }

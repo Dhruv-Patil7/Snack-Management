@@ -19,4 +19,7 @@ public class ManualRedeemRequest {
 
     @NotBlank(message = "Snack item is required")
     private String snackItem;
+
+    // Optional: plant area where snacks are being distributed (e.g. TPP, E & I, CCR)
+    private String plantArea;
 }

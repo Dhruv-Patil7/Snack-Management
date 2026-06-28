@@ -19,4 +19,5 @@ public class RedemptionResponse {
     private Long distributorId;
     private String distributorName;
     private String snackItem;
+    private String plantArea;
 }

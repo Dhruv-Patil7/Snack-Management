@@ -32,12 +32,15 @@ public class Redemption {
     @Column(nullable = false, length = 10)
     private SnackSession session;
 
-    @Enumerated(EnumType.STRING)
+    @Enumerated(EnumType.STRING )
     @Column(name = "redemption_mode", nullable = false, length = 20)
     private RedemptionMode redemptionMode;
 
     @Column(name = "snack_item", length = 100)
     private String snackItem;
+
+    @Column(name = "plant_area", length = 50)
+    private String plantArea;
 
     @Column(name = "redeemed_at", nullable = false)
     @Builder.Default

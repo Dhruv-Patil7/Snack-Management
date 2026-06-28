@@ -66,6 +66,7 @@ export interface Redemption {
   distributorId: number;
   distributorName: string;
   snackItem: string | null;
+  plantArea?: string | null;
 }
 
 export interface DailyStat {
@@ -73,6 +74,7 @@ export interface DailyStat {
   day: string;
   morning: number;
   evening: number;
+  night: number;
 }
 
 export interface DistributorStat {
@@ -83,6 +85,7 @@ export interface DistributorStat {
 export interface DashboardData {
   morningCount: number;
   eveningCount: number;
+  nightCount: number;
   monthlyTotal: number;
   totalActiveEmployees: number;
   weeklyStats: DailyStat[];

@@ -62,11 +62,11 @@ export const redemptionApi = {
   scan: (qrToken: string, session: string) =>
     api.post<ScanResult>('/api/redemptions/scan', { qrToken, session }),
 
-  confirm: (employeeId: number, session: string, snackItem: string) =>
-    api.post<Redemption>('/api/redemptions/confirm', { employeeId, session, snackItem }),
+  confirm: (employeeId: number, session: string, snackItem: string, plantArea?: string) =>
+    api.post<Redemption>('/api/redemptions/confirm', { employeeId, session, snackItem, plantArea }),
 
-  manual: (employeeCode: string, pin: string, session: string, snackItem: string) =>
-    api.post<Redemption>('/api/redemptions/manual', { employeeCode, pin, session, snackItem }),
+  manual: (employeeCode: string, pin: string, session: string, snackItem: string, plantArea?: string) =>
+    api.post<Redemption>('/api/redemptions/manual', { employeeCode, pin, session, snackItem, plantArea }),
 
   myHistory: () =>
     api.get<Redemption[]>('/api/redemptions/my-history'),
@@ -144,12 +144,15 @@ export const dashboardApi = {
 
   employeeSummary: (id: number) =>
     api.get<{ history: Redemption[]; monthlyCount: number }>(`/api/dashboard/employee/${id}`),
+
+  distributorSummary: (id: number) =>
+    api.get<{ history: Redemption[]; monthlyCount: number }>(`/api/dashboard/distributor/${id}`),
 };
 
 // ==================== Menu ====================
 
 export const menuApi = {
-  getToday: () => api.get<{ morningSnack: string; eveningSnack: string; allowedSnacks: string[] }>('/api/menu/today'),
+  getToday: () => api.get<{ morningSnack: string; eveningSnack: string; nightSnack: string; allowedSnacks: string[] }>('/api/menu/today'),
   setToday: (session: string, snackName: string) => api.post<{ session: string; snackName: string }>('/api/menu/today', { session, snackName }),
 };
 
