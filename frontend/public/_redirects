@@ -1,0 +1,11 @@
+# Cloudflare Pages Redirects & Rewrites
+# Replace 'https://your-backend-api-url.com' with your actual backend URL
+
+# Proxy API requests to backend
+/api/* https://your-backend-api-url.com/api/:splat 200
+
+# Proxy uploaded photos to backend
+/uploads/* https://your-backend-api-url.com/uploads/:splat 200
+
+# SPA fallback - routes all other requests to index.html for React Router
+/* /index.html 200

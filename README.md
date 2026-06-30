@@ -126,3 +126,49 @@ The frontend runs on `http://localhost:5173`.
 │   └── Dockerfile
 └── docker-compose.yml
 ```
+
+## Cloudflare Hosting
+
+This project is prepared for deployment and hosting through Cloudflare. Since the application includes a Java backend and a PostgreSQL database, standard Cloudflare Pages alone is not enough to run the full stack. Choose one of the following methods:
+
+### Method 1: Cloudflare Tunnel (Recommended for Self-Hosting)
+
+Expose the application directly and securely from your local machine or server through Cloudflare without open firewall ports.
+
+#### Option A: Docker Compose Tunnel
+1. Install [Docker Desktop](https://www.docker.com/).
+2. Create or edit your `.env` file in the root directory and add your Cloudflare Tunnel Token:
+   ```env
+   TUNNEL_TOKEN=your-cloudflare-tunnel-token-here
+   ```
+3. Start the stack along with the Cloudflare Tunnel:
+   ```bash
+   docker-compose -f docker-compose.yml -f docker-compose.cloudflare.yml up -d
+   ```
+   This will start PostgreSQL, the backend, the frontend, and run a secure tunnel proxying traffic to the frontend container (port 80).
+
+#### Option B: Local Quick Tunnel (Development/Sharing)
+If you run the app natively using `run.bat` (Postgres in Docker, frontend/backend locally):
+1. Install `cloudflared` CLI on your machine.
+2. Run the tunnel script:
+   ```bash
+   run-tunnel.bat
+   ```
+   This starts the full environment and automatically spawns a temporary tunnel (e.g., `https://xxx.trycloudflare.com`) pointing to the UI. Since Vite is configured to proxy `/api` and `/uploads` requests, this single tunnel exposes the entire application securely!
+
+---
+
+### Method 2: Cloudflare Pages (Frontend Hosting Only)
+
+Host the React frontend statically on Cloudflare Pages, and proxy API calls to your hosted backend.
+
+1. The project contains a `frontend/public/_redirects` file which is copied into your production build folder.
+2. Edit `frontend/public/_redirects` to point to your hosted backend URL:
+   ```
+   /api/* https://your-backend-api-url.com/api/:splat 200
+   /uploads/* https://your-backend-api-url.com/uploads/:splat 200
+   /* /index.html 200
+   ```
+3. Deploy the `frontend/` directory to Cloudflare Pages (Build Command: `npm run build`, Output Directory: `dist`).
+4. Ensure your hosted backend has CORS configured to allow the Cloudflare Pages subdomain (e.g., via `CORS_ORIGINS` env variable).
+
